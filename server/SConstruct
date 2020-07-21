@@ -1,0 +1,31 @@
+Program(
+    'server',
+    [
+        Glob('*.cpp'),
+        Glob('*.cc')
+    ],
+    CPPPATH = [
+        '#',
+        '#/websocketpp/',
+        '#/mysql/',
+        '#/redis/'
+    ],
+    LIBS = [
+        'libboost_system',
+        'libboost_thread',
+        'libboost_chrono',
+        'libboost_random',
+        'libprotobuf',
+        'libpthread',
+        'libmysqlclient'
+    ],
+    LINKFLAGS = '-static',
+    LIBPATH = [
+        '/usr/local/lib',
+        '/usr/lib'
+    ],
+    CCFLAGS = '-g -DPOSIX -Wall -std=c++11'
+)
+
+
+

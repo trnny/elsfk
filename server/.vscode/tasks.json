@@ -1,0 +1,42 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "type": "shell",
+            "command": "g++",
+            "args": [
+                "-g",
+                "test.cpp",
+                "msg.pb.cc",
+                "wsserver.cpp",
+                "-o",
+                "${workspaceFolder}/${fileBasenameNoExtension}",
+                "-I.",
+                "-Iwebsocketpp",
+                "-L/usr/local/lib",
+                "-L/usr/lib",
+                "-lprotobuf",
+                "-lboost_system",
+                "-lboost_thread",
+                "-lboost_chrono",
+                "-lboost_random",
+                "-lprotobuf",
+                "-lpthread",
+                "-lmysqlclient"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }, 
+        {
+            "label": "scons",
+            "type": "shell",
+            "command": "scons",
+            "args": [
+                "-j2"
+            ]
+        }
+    ]
+}

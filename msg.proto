@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+message Msg {
+    string desc = 1;
+    map<string, VType> data = 2;
+    message VType {
+        string v_str = 1;
+        int32 v_int = 2;
+        bool v_bool = 3;
+        repeated string vr_str = 4;
+        repeated int32 vr_int = 5;
+        bytes v_bytes = 6;
+        int32 which = 7;
+    }
+}
