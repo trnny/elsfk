@@ -1,0 +1,29 @@
+<script src="./msg.js"></script>
+<script src="./ws.js"></script>
+<script src="./md5.js"></script>
+<script>
+
+var s = {desc: "signup", data: {uname: "ouyu", password: "uxuxu"}};
+
+var ws = new WS();
+ws.on('wsopen', () => {
+    console.log("连接上了");
+    ws.send(s);
+});
+ws.on('wsclose', () => {
+    console.log("关闭了");
+});
+ws.on('wsmsg', data => {
+    console.log(data);
+});
+ws.on('wsjso', jso => {
+    console.log(jso);
+});
+ws.on('signup', data => {
+    console.log('signup result:', data);
+});
+
+</script>
+<style>
+
+</style>

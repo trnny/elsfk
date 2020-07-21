@@ -1,7 +1,8 @@
-/**
- * 在浏览器环境下 无法使用import
- */
-// import './msg.js';
+// import "./Script/long";
+// import "./Script/protobuf";
+// import "./Script/msg.proto";
+
+const Msg = window.protobuf.roots.default.Msg;
 
 /**
  * 检查对象是否符合pb要求 
@@ -24,32 +25,39 @@ function objcheck (obj) {
  * @param {Uint8Array | ArrayBuffer} bin 二进制数组
  */
 function bin2jso(bin) {
-    return pb2jso(proto.Msg.deserializeBinary(bin));
+    if (bin instanceof ArrayBuffer) {
+        bin = new Uint8Array(bin);
+    }
+    return pb2jso(Msg.decode(bin));
 }
 
 /**
- * 将js对象解析为二进制数组
+ * 将js对象解析为二进制数组(Uint8Array)
  * 用于ws发送
  * ws: WebSocket
  * @param {object} jso 
+ * @returns {Uint8Array}
  */
 function jso2bin(jso) {
-    return jso2pb(jso).serializeBinary();
+    let packet = Msg.encode(jso2pb(jso)).finish();
+    let buffer = new Uint8Array(packet.byteLength);
+    buffer.set(packet, 0);
+    return buffer;
 }
 
 /**
  * 将pb对象解析为js对象
- * @param {proto.Msg} pb pb对象
+ * @param {Msg} pb pb对象
  */
 function pb2jso(pb) {
-    if (!(pb instanceof proto.Msg)) throw Error;
+    if (!(pb instanceof Msg)) throw Error;
     const jso = new Object();
-    const pm = pb.getDataMap();
-    jso.desc = pb.getDesc();
+    const pm = pb.data;
+    jso.desc = pb.desc;
     jso.data = new Object();
-    pm.forEach((v,k)=>{
-        jso.data[k] = getpbo(v);
-    });
+    for (var k in pm) {
+        jso.data[k] = getpbo(pm[k]);
+    }
     return jso;
 }
 
@@ -59,11 +67,11 @@ function pb2jso(pb) {
  */
 function jso2pb(jso) {
     if (!objcheck(jso)) throw Error;
-    const pb = new proto.Msg();
-    const pm = pb.getDataMap();
-    pb.setDesc(jso.desc);
+    const pb = new Msg();
+    const pm = pb.data;
+    pb.desc = jso.desc;
     if (jso.data) for (var key in jso.data) {
-        pm.set(key, makepbv(jso.data[key]));
+        pm[key] = makepbv(jso.data[key]);
     }
     return pb;
 }
@@ -74,58 +82,58 @@ function jso2pb(jso) {
  */
 function makepbv(o) {
     if (o === undefined || o === null) throw TypeError;
-    const v = new proto.Msg.VType();
+    const v = new Msg.VType();
     if (o instanceof Uint8Array) {
-        v.setWhich(6);
-        v.setVBytes(o);
+        v.which = 6;
+        v.vBytes = o;
     }else if(o instanceof ArrayBuffer) {
-        v.setWhich(6);
-        v.setVBytes(new Uint8Array(o));
+        v.which = 6;
+        v.vBytes = new Uint8Array(o);
     }
     else if (o instanceof Array && o.length) {
         if (typeof o[0] === 'number') {
-            v.setWhich(5);
-            v.setVrIntList(o);
+            v.which = 5;
+            v.vrInt = o;
         }else{
-            v.setWhich(4);
-            v.setVrStrList(o);
+            v.which = 4;
+            v.vrStr = o;
         }
     }else if (typeof o === "boolean") {
-        v.setWhich(3);
-        v.setVBool(o);
+        v.which = 3;
+        v.vBool = o;
     }else if (typeof o === "number") {
-        v.setWhich(2);
-        v.setVInt(o);
+        v.which = 2;
+        v.vInt = o;
     }else if (typeof o === "string") {
-        v.setWhich(1);
-        v.setVStr(o);
+        v.which = 1;
+        v.vStr = o;
     }else {
-        v.setWhich(0);  // 空数组
+        v.which = 0;  // 空数组
     }
     return v;
 }
 
 /**
  * 获取pb中的值
- * @param {proto.Msg.VType} v pb中的值
+ * @param {Msg.VType} v pb中的值
  */
 function getpbo(v) {
-    if (v instanceof proto.Msg.VType) {
-        switch (v.getWhich()){
+    if (v instanceof Msg.VType) {
+        switch (v.which){
         case 0:
             return [];
         case 1:
-            return v.getVStr();
+            return v.vStr;
         case 2:
-            return v.getVInt();
+            return v.vInt;
         case 3:
-            return v.getVBool();
+            return v.vBool;
         case 4:
-            return v.getVrStrList();
+            return v.vrStr;
         case 5:
-            return v.getVrIntList();
+            return v.vrInt;
         case 6:
-            return v.getVBytes();
+            return v.vBytes;
         default:
             throw Error;
         }
@@ -147,7 +155,7 @@ class WS {
         this.__ws.onopen = () => {
             this.__ok = true;
             this.emit('wsopen');
-            this.send({desc: 'wslink'});
+            // this.send({desc: 'wslink'});
         }
         this.__ws.onclose = () => {
             this.__ok = false;

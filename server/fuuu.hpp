@@ -152,7 +152,7 @@ int new_user(const string& un, const string& pw) {
 // 给ws注册事件     ws是否需要弄成全局变量?  似乎一个ws服务器就够了
 void ws_on(WS &ws) {
 
-    // 
+    // signup  注册
     ws.on("signup", _WSONCB_{
         string uname;
         string password;
@@ -200,9 +200,10 @@ void ws_on(WS &ws) {
         string buff_back;
         msg_back.SerializeToString(&buff_back);
         ws.send(hdl, buff_back);
+        cout << "[SIGNUP] " << uname << endl;
     });
 
-    // signin
+    // signin  登陆
     ws.on("signin", _WSONCB_{
         int uid;
         string password;
@@ -257,11 +258,83 @@ void ws_on(WS &ws) {
                 tips = "服务器繁忙，请稍后再试!";
             }
         }
+
+        if(ok_back) {
+            // 登陆成功  获取rid，以便后面重连
+            data_back->insert(mp("rid", makepbv(ws.addHDLAndUid(uid, hdl))));
+            // TO-DO  记录登陆操作 暂时未知如何获取ip
+            if (!sql.query("insert into elsfk_login (u_id) values (" + std::to_string(uid) + " )")){
+                printf("[WS WARNING] 用户%d登陆成功，但写入数据库失败!\n", uid);
+            }
+        }
         data_back->insert(mp("ok", makepbv(ok_back)));
         data_back->insert(mp("msg", makepbv(tips)));
         string buff_back;
         msg_back.SerializeToString(&buff_back);
         ws.send(hdl, buff_back);
+        cout << "[SIGNIN] " << uid << endl;
+    });
+
+    // 重连
+    ws.on("userrelink", _WSONCB_{
+        // uid: int, rid: int
+        int uid, rid;
+    });
+
+    ws.on("logout", _WSONCB_{
+        CITER iter;
+        Msg msg_back;
+        auto data_back = msg_back.mutable_data();
+        bool ok_back = true;
+        string tips = "登出成功!";
+        msg_back.set_desc("signin");
+
+        auto info = ws.getInfoByHdl(hdl);
+        if (NULL == info) {
+            ok_back = false;
+            tips = "未知用户!";
+        }else{
+
+        }
+
+    });
+
+    ws.on("userrename", _WSONCB_{
+
+    });
+
+    ws.on("roomjoin", _WSONCB_{
+
+    });
+    ws.on("gamectrl", _WSONCB_{
+
+    });
+    ws.on("friendadd", _WSONCB_{
+
+    });
+    ws.on("friendaddacc", _WSONCB_{
+
+    });
+    ws.on("frienddel", _WSONCB_{
+
+    });
+    ws.on("friendlist", _WSONCB_{
+
+    });
+    ws.on("recordlist", _WSONCB_{
+
+    });
+    ws.on("recordinfo", _WSONCB_{
+
+    });
+    ws.on("recordget", _WSONCB_{
+
+    });
+    ws.on("", _WSONCB_{
+
+    });
+    ws.on("", _WSONCB_{
+
     });
 };
 

@@ -28,6 +28,13 @@ signin: {   // 登陆
     uid,
     password
 }
+userrelink: {
+    uid,
+    rid
+}
+logout: {   // 登出
+}
+
 userrename: {       // 改名
     newuname
 }

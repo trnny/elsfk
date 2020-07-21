@@ -8,6 +8,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <set>
 #include <map>
 #include "msg.pb.h"
 
@@ -39,7 +40,7 @@ private:
             for (auto ef : iter->second)
                 ef(t1, t2);
     }
-    struct cmp_key
+    struct cmp_hdl
     {
         bool operator()(HDL hdl1, HDL hdl2) const
         {
@@ -48,9 +49,10 @@ private:
             return false;
         }
     };
-    map<HDL, HDLInfo*, cmp_key> hdl2info;
+    map<HDL, HDLInfo*, cmp_hdl> hdl2info;
     map<int, HDL> uid2hdl;
-    vector<HDLInfo*> rll;   //  重连队列  超时、重连时移除
+    // vector<HDLInfo*> rll;   //  重连队列  超时、重连时移除
+    set<HDLInfo*> rll;  // 使用集合，不使用向量
     // TO-DO  实现定时器，定时检查重连队列
 public:
     WS() {
@@ -58,15 +60,30 @@ public:
         mep.set_access_channels(websocketpp::log::alevel::all ^ websocketpp::log::alevel::frame_payload);
         mep.init_asio();
         mep.set_message_handler([this](HDL hdl, server::message_ptr msg_ptr) {
+            cout << "收到消息: \n" << msg_ptr->get_payload() << "\n长度: " << msg_ptr->get_payload().size() << endl;
             if(msg_ptr->get_opcode() == websocketpp::frame::opcode::binary) {
                 Msg msg;
                 if (msg.ParseFromString(msg_ptr->get_payload())) {
                     emit(msg.desc(), hdl, msg.data());
+                    cout << "[MSG DESC] " << msg.desc() << endl;
                 }
+                else
+                    cout << "[MSG PARSE ERROR]" << endl;
+            }
+            else{
+                cout << "[UNKOWN MSG] "<< endl;
             }
         });
         mep.set_close_handler([this](HDL hdl) {
-            // 用户断开连接  断开连接时：等待重连队列、移除
+            // TO-DO 用户断开连接  断开连接时：等待重连队列、移除
+            auto iter = hdl2info.find(hdl);
+            if (iter != hdl2info.cend()) {
+                // 在还未退出登陆的情况下断开连接
+                iter->second->tmo = 15000;         // 给15秒重连的机会
+                rll.insert(iter->second);
+                hdl2info.erase(iter);   // 已经断开就没必要在记录了
+            }
+            cout << "[CLOSE] 客户端断开连接" << endl;
         });
     }
     /**
@@ -122,6 +139,41 @@ public:
             return hdl_null;
         }
         return iter->second;
+    }
+    /**
+     * 添加uid和hdl
+     * 返回随机的认证码
+     */
+    int addHDLAndUid(int uid, HDL hdl) {
+        if (uid && hdl.lock()) {
+            int rid = rand();
+            hdl2info[hdl] = new HDLInfo({uid, rid, 0});
+            uid2hdl[uid] = hdl;
+            return rid;
+        }
+        return 0;
+    }
+    /**
+     * hdl信息移除掉，返回被移除的uid
+     * 未有相关信息 返回0
+     */
+    int removeHDL(HDL hdl) {
+        auto iter = hdl2info.find(hdl);
+        if (iter != hdl2info.cend()) {
+            int uid = iter->second->uid;
+            uid2hdl.erase(uid);
+            hdl2info.erase(iter);
+            delete iter->second;
+            return uid;
+        }
+        return 0;
+    }
+    /**
+     * 更新hdl
+     * 使用rid作认证
+     */
+    void updateHDL(int rid, HDL hdl) {
+
     }
 };
 

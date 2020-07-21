@@ -19,7 +19,7 @@ Program(
         'libpthread',
         'libmysqlclient'
     ],
-    LINKFLAGS = '-static',
+    # LINKFLAGS = '-static',
     LIBPATH = [
         '/usr/local/lib',
         '/usr/lib'
