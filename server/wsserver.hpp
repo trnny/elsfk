@@ -2,6 +2,12 @@
 #define __WSSERVER__
 
 
+/**
+ * 该文件
+ * 提供ws通信的接口
+ * 提供hdl的管理接口
+ */
+
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 #include <functional>
@@ -60,12 +66,12 @@ public:
         mep.set_access_channels(websocketpp::log::alevel::all ^ websocketpp::log::alevel::frame_payload);
         mep.init_asio();
         mep.set_message_handler([this](HDL hdl, server::message_ptr msg_ptr) {
-            cout << "收到消息: \n" << msg_ptr->get_payload() << "\n长度: " << msg_ptr->get_payload().size() << endl;
+            // cout << "收到消息: \n" << msg_ptr->get_payload() << "\n长度: " << msg_ptr->get_payload().size() << endl;
             if(msg_ptr->get_opcode() == websocketpp::frame::opcode::binary) {
                 Msg msg;
                 if (msg.ParseFromString(msg_ptr->get_payload())) {
                     emit(msg.desc(), hdl, msg.data());
-                    cout << "[MSG DESC] " << msg.desc() << endl;
+                    // cout << "[MSG DESC] " << msg.desc() << endl;
                 }
                 else
                     cout << "[MSG PARSE ERROR]" << endl;
@@ -83,7 +89,7 @@ public:
                 rll.insert(iter->second);
                 hdl2info.erase(iter);   // 已经断开就没必要在记录了
             }
-            cout << "[CLOSE] 客户端断开连接" << endl;
+            // cout << "[CLOSE] 客户端断开连接" << endl;
         });
     }
     /**
@@ -169,11 +175,25 @@ public:
         return 0;
     }
     /**
-     * 更新hdl
+     * 更新hdl，在用户重连时使用
      * 使用rid作认证
+     * 返回更新是否成功
      */
-    void updateHDL(int rid, HDL hdl) {
-
+    bool updateHDL(HDL hdl, int uid, int rid) {
+        auto iter_1 = uid2hdl.find(uid);
+        if (iter_1 == uid2hdl.cend())
+            return false;   // 为找到该重连信息
+        auto iter_2 = hdl2info.find(iter_1->second);
+        if (iter_2 == hdl2info.cend())
+            return false;   // 如果这样，是服务器的bug
+        if (iter_2->second->rid != rid)
+            return false;   // 认证不通过
+        HDLInfo* info = iter_2->second;
+        rll.erase(info);  // 认证通过 从重连队列移除
+        hdl2info.erase(iter_2);
+        hdl2info[hdl] = info;
+        uid2hdl[uid] = hdl;
+        return true;
     }
 };
 

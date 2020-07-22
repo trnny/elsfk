@@ -12,3 +12,19 @@
   >今天通信对接 发现google原生的protobuf对cocos非常不友好，于是改用protobufjs
   >之后发现序列化结果在服务端解析不成功
   >原因：js里编码消息时:encode(...).finish()返回的Buffer尾部有大量的空字节，在js的console中检查时，空字节被console忽略以至于没发现，但通过ws发送过去时，空字节全都发送过去，故在C++里解析失败，已解决。
+
+## 0722
+  两端第一次成功通信
+
+  修复了一些bug
+  >sql查询结果的读取bug
+  >注册时插入用户信息的sql语句bug
+  >注册时生成用户id的bug
+
+  实现登出和重连的核心部分
+
+  今日bugs:
+  >按照MySQL官方的文档，上次查询为select语句，mysql_affected_rows返回查询结果的行数
+  >在生成用户id时，用到该函数判断随机生成的id是否存在，返回结果却总是不正确
+  >之后发现该函数返回的永远是(uint64)-1   这与文档上说明的似乎不同
+  >mysql_store_result系列的方法解决了这个

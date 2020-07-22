@@ -18,67 +18,90 @@
 // ============ 发送 ============
 // 有些消息里 不需要带上自己的`uid`  例如`friendlist` 服务器是根据消息的来源,而不是消息里附带的`uid`来拉取用户的好友列表
 // 消息无法发送二维数组 若有二维数组发送的需要 两端统一编码方式即可
-wslink: {   // 告知服务器一些自己的信息
-}
+
 signup: {   // 注册 附带注册信息
     uname,
     password
 }
 signin: {   // 登陆 
-    uid,
+    uid,//int
     password
 }
-userrelink: {
-    uid,
-    rid
+
+matching: {         // 请求加入房间
 }
-logout: {   // 登出
+matchingSure:{
+}
+newDropping: {
 }
 
-userrename: {       // 改名
-    newuname
+reduce: {
+    reduce  // [a0*1+a1*64+a2*64*64... , ...]  一个int表示一轮消除  多轮消除的数组
 }
-roomjoin: {         // 请求加入房间
-    hardlevel
+
+blockSet: {
+    uid
+    blocks  // [y*256+x, y*256+x ...] 四个坐标序列
 }
-roomjoinsuccess: {  // 成功加入房间
-    plays,
-    hardlevel
-}
-gamectrl: {     // 游戏控制  自己发出 服务器帮忙转发到房间所有玩家
-    roomid,
-    ctrl        // 标识哪种控制 比如说pause left reduce等等
-}
-gamectrlrec: {  // 收到游戏控制
-    uid,        // 标识哪个玩家 可以是自己
-    roomid,
-    ctrl
-}
-friendadd: {    // 加好友
-    fuid        // 表示哪个好友
-}
-friendaddrec: { // 接受好友请求
-    fuid
-}
-friendaddacc: { // 接受好友请求
-    fuid
-}
-frienddel: {    // 删好友
-    fuid
-}
-friendlist: {   // 好友列表
-}
-friendinfo: {   // 好友信息
-    fuid
-}
-recordlist: {   // 对局记录列表
-}
-recordinfo: {   // 某条对局记录的对局信息
-    recordid
-}
-recordget: {    // 拉取某条对局记录
-    recordid
+
+blockRm: {
+    uid
+    blocks  // [y*256+x, y*256+x ...] 四个坐标序列
 }
 
 
 // =========== 接收 ===========
+
+
+signup: {
+    ok,
+    uid,
+    msg
+}
+
+signin: {
+    ok
+    msg
+    rid
+}
+
+matching: {
+    ok
+    msg
+}
+matchingSure : {        // 确认
+    ok
+    uid
+}
+matchingSucceed: {
+    uids // [uid, uid ...] 长度4 玩家们
+}
+
+gameStart: {
+    unn // [uid,now,next ... ] 长度12 玩家们和他们的块
+}
+
+
+newDropping: {
+    ok
+    uid
+    next
+}
+
+reduce: {
+    ok
+    uid
+    reduce  // [a0*1+a1*64+a2*64*64... , ...]  一个int表示一轮消除  多轮消除的数组
+}
+
+blockSet: {
+    ok
+    uid
+    blocks  // [y*256+x, y*256+x ...] 四个坐标序列
+}
+
+blockRm: {
+    ok
+    uid
+    blocks  // [y*256+x, y*256+x ...] 四个坐标序列
+}
