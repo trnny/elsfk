@@ -9,6 +9,7 @@
 
 #include "wsserver.hpp"
 #include "mysql/mysqlfuuu.hpp"
+#include "game.hpp"
 
 
 Msg_VType makepbv(const vector<int>& o) {
@@ -116,6 +117,7 @@ bool getpbo(const Msg_VType& v, string& o) {
 
 MyMysql sql;
 vector<vector<string>> tab;
+GameRoomManager roomManager;
 #define _WSONCB_ [&ws](HDL hdl, const pb_map& data)
 
 /**
@@ -152,55 +154,108 @@ int new_user(const string& un, const string& pw) {
 // 给ws注册事件     ws是否需要弄成全局变量?  似乎一个ws服务器就够了
 void ws_on(WS &ws) {
 
-    // signup  注册
-    ws.on("signup", _WSONCB_{
-        string uname;
-        string password;
-        CITER iter;
+    /**
+     * 告知所有人 匹配成功 等待大家点确定
+     */
+    roomManager.onMatch = [&](GameRoom* room) {
         Msg msg_back;
         auto data_back = msg_back.mutable_data();
-        bool ok_back = true;
+        msg_back.set_desc("matchingSucceed");
+        data_back->insert(mp("uids", makepbv(room->uids)));
+        string buff_back;
+        msg_back.SerializeToString(&buff_back);
+        for (int uid : room->uids) 
+            ws.send(uid, buff_back);
+    };
+
+    /**
+     * 告知所有人 有人没点确定 取消匹配
+     */
+    roomManager.onCancel = [&](GameRoom* room) {
+        Msg msg_back;
+        msg_back.set_desc("matchingCancel");
+        string buff_back;
+        msg_back.SerializeToString(&buff_back);
+        for (int uid : room->uids) 
+            ws.send(uid, buff_back);
+    };
+
+    /**
+     * 告知所有人 大家都点了确定 游戏开始了
+     */
+    roomManager.onPlay = [&](GameRoom* room) {
+        vector<char> nxn;   // 用于记录
+        vector<int> unn;    // 发往客户端
+        unsigned char now, next, mix;
+        for (int uid : room->uids) {
+            now = rand() % 16;
+            next = rand() % 16;
+            mix = now * 16 + next;
+            room->record.push(uid); // 记录四个uid
+            unn.push_back(uid);
+            unn.push_back(now);
+            unn.push_back(next);
+            nxn.push_back(mix);
+        }
+        for (char c : nxn) {    // 记录四个mix  mix由now和next组成
+            room->record.push(c);
+        }
+        Msg msg_back;
+        auto data_back = msg_back.mutable_data();
+        msg_back.set_desc("gameStart");
+        data_back->insert(mp("unn", makepbv(unn)));
+        string buff_back;
+        msg_back.SerializeToString(&buff_back);
+        for (int uid : room->uids) 
+            ws.send(uid, buff_back);
+    };
+
+    /**
+     * 告知所有人  大家都阵亡了 游戏结束了
+     */
+    roomManager.onOver = [&](GameRoom* room) {
+        Msg msg_back;
+        auto data_back = msg_back.mutable_data();
+        msg_back.set_desc("gameOver");
+        data_back->insert(mp("ok", makepbv(true)));
+        data_back->insert(mp("uid", makepbv(0)));   // 0表示大家都结束了
+        string buff_back;
+        msg_back.SerializeToString(&buff_back);
+        for (int uid : room->uids) 
+            ws.send(uid, buff_back);
+    };
+
+    // signup  注册
+    ws.on("signup", _WSONCB_{
+        string uname, password;
+        CITER iter;
+        iter = data.find("uname");
+        if (iter == data.cend())
+            return;
+        if (!getpbo(iter->second, uname) || uname.length() == 0 || uname.length() > 24) 
+            return;        
+        iter = data.find("password");
+        if (iter == data.cend())
+            return;
+        if (!getpbo(iter->second, password) || password.length() != 32)
+            return;
+        Msg msg_back;
+        auto data_back = msg_back.mutable_data();
+        bool ok = true;
         string tips = "注册成功!";
         msg_back.set_desc("signup");
-        
-        iter = data.find("uname");
-        if (iter != data.cend()) {
-            if (!getpbo(iter->second, uname) || uname.length() == 0 || uname.length() > 24) {
-                ok_back = false;
-                tips = "非法访问!";
-            }
-        }else{
-            ok_back = false;
-            tips = "非法访问!";
+        int u_id = new_user(uname, password);
+        if (u_id)
+            data_back->insert(mp("uid", makepbv(u_id)));
+        else{
+            ok = false;
+            tips = "服务器繁忙，请稍后再试!";
         }
-        
-        iter = data.find("password");
-        if (iter != data.cend()) {
-            if (!getpbo(iter->second, password) || password.length() != 32) {
-                ok_back = false;
-                tips = "非法访问!";
-            }
-        }else{
-            ok_back = false;
-            tips = "非法访问!";
-        }
-        
-        if (ok_back) {
-            // 消息合格
-            int u_id = new_user(uname, password);
-            if (u_id) {
-                data_back->insert(mp("uid", makepbv(u_id)));
-            }else{
-                ok_back = false;
-                tips = "服务器繁忙，请稍后再试!";
-            }
-        }
-        data_back->insert(mp("ok", makepbv(ok_back)));
+        data_back->insert(mp("ok", makepbv(ok)));
         data_back->insert(mp("msg", makepbv(tips)));
         string buff_back;
         msg_back.SerializeToString(&buff_back);
         ws.send(hdl, buff_back);
-        // cout << "[SIGNUP] " << uname << endl;
     });
 
     // signin  登陆
@@ -208,111 +263,80 @@ void ws_on(WS &ws) {
         int uid;
         string password;
         CITER iter;
+        iter = data.find("uid");
+        if (iter == data.cend())
+            return;
+        if (!getpbo(iter->second, uid))
+            return;
+        iter = data.find("password");
+        if (iter == data.cend())
+            return;
+        if (!getpbo(iter->second, password) || password.length() != 32)
+            return;
         Msg msg_back;
         auto data_back = msg_back.mutable_data();
-        bool ok_back = true;
+        bool ok = true;
         string tips = "登陆成功!";
         msg_back.set_desc("signin");
-
-        iter = data.find("uid");
-        if (iter != data.cend()) {
-            if (!getpbo(iter->second, uid)) {
-                ok_back = false;
-                tips = "非法访问!";
-            }
-        }else{
-            ok_back = false;
-            tips = "非法访问!";
-        }
-
-        iter = data.find("password");
-        if (iter != data.cend()) {
-            if (!getpbo(iter->second, password) || password.length() != 32) {
-                ok_back = false;
-                tips = "非法访问!";
-            }
-        }else{
-            ok_back = false;
-            tips = "非法访问!";
-        }
-
-        if(ok_back) {
-            // 消息合格
-            if (sql.query("select u_passwd from elsfk_users where u_id=" + std::to_string(uid)) && sql.result(tab)) {
-                if (tab.size() == 0) {
-                    ok_back = false;
-                    tips = "用户id不存在!";
-                }else{
-                    if(tab[0][0] != password) {
-                        // 密码错误
-                        ok_back = false;
-                        tips = "密码错误!请重试";
-                    }
-                    // 密码正确
-                }
+        if (sql.query("select u_passwd from elsfk_users where u_id=" + std::to_string(uid)) && sql.result(tab)) {
+            if (tab.size() == 0) {
+                ok = false;
+                tips = "用户id不存在!";
             }else{
-                // 查询错误
-                ok_back = false;
-                tips = "服务器繁忙，请稍后再试!";
+                if(tab[0][0] != password) {
+                    // 密码错误
+                    ok = false;
+                    tips = "密码错误!请重试";
+                }
             }
+        }else{
+            // 查询错误
+            ok = false;
+            tips = "服务器繁忙，请稍后再试!";
         }
-
-        if(ok_back) {
+        if(ok) {
             // 登陆成功  获取rid，以便后面重连
             data_back->insert(mp("rid", makepbv(ws.addHDLAndUid(uid, hdl))));
-            // TO-DO  记录登陆操作 暂时未知如何获取ip
             if (!sql.query("insert into elsfk_login (u_id) values (" + std::to_string(uid) + " )")){
                 cout << "[WS WARNING] 用户[" << uid << "]登陆成功，但写入数据库失败!" << endl;
             }
         }
-        data_back->insert(mp("ok", makepbv(ok_back)));
+        data_back->insert(mp("ok", makepbv(ok)));
         data_back->insert(mp("msg", makepbv(tips)));
         string buff_back;
         msg_back.SerializeToString(&buff_back);
         ws.send(hdl, buff_back);
-        // cout << "[SIGNIN] " << uid << endl;
     });
 
-    // 重连
+    /**
+     * 重连
+     * 暂时 重连只能重连成登陆状态  并不能恢复重连前的状态
+     * 后面使用room->record是可以实现恢复游戏状态的
+     */
     ws.on("userrelink", _WSONCB_{
         // uid: int, rid: int
         int uid, rid;
         CITER iter;
+        iter = data.find("uid");
+        if (iter == data.cend())
+            return;
+        if (!getpbo(iter->second, uid))
+            return;
+        iter = data.find("rid");
+        if (iter == data.cend())
+            return;
+        if (!getpbo(iter->second, rid))
+            return;
         Msg msg_back;
         auto data_back = msg_back.mutable_data();
-        bool ok_back = true;
+        bool ok = true;
         string tips = "重连成功!";
+        if (!ws.updateHDL(hdl, uid, rid)) {
+            ok = false;
+            tips = "重连失败";
+        }
         msg_back.set_desc("userrelink");
-
-        iter = data.find("uid");
-        if (iter != data.cend()) {
-            if (!getpbo(iter->second, uid)) {
-                ok_back = false;
-                tips = "非法访问!";
-            }
-        }else{
-            ok_back = false;
-            tips = "非法访问!";
-        }
-
-        iter = data.find("rid");
-        if (iter != data.cend()) {
-            if (!getpbo(iter->second, rid)) {
-                ok_back = false;
-                tips = "非法访问!";
-            }
-        }else{
-            ok_back = false;
-            tips = "非法访问!";
-        }
-        if (ok_back) {
-            // 消息合格
-            if (!ws.updateHDL(hdl, uid, rid)) {
-                ok_back = false;
-                tips = "重连失败";
-            }
-        }
-        data_back->insert(mp("ok", makepbv(ok_back)));
+        data_back->insert(mp("ok", makepbv(ok)));
         data_back->insert(mp("msg", makepbv(tips)));
         string buff_back;
         msg_back.SerializeToString(&buff_back);
@@ -320,45 +344,95 @@ void ws_on(WS &ws) {
     });
 
     ws.on("logout", _WSONCB_{
-        CITER iter;
+        if (!ws.removeHDL(hdl))
+            return;
         Msg msg_back;
         auto data_back = msg_back.mutable_data();
-        bool ok_back = true;
-        string tips = "登出成功!";
         msg_back.set_desc("logout");
-        if (ws.removeHDL(hdl) == 0) {
-            ok_back = false;
-            tips = "未知用户!";
-        }
-        data_back->insert(mp("ok", makepbv(ok_back)));
-        data_back->insert(mp("msg", makepbv(tips)));
+        data_back->insert(mp("ok", makepbv(true)));
         string buff_back;
         msg_back.SerializeToString(&buff_back);
         ws.send(hdl, buff_back);
     });
+    
+    // 匹配请求
     ws.on("matching", _WSONCB_{
-        
+        if (!roomManager.getIntoRoom(ws.getInfoByHdl(hdl)->uid))
+            return;
+        Msg msg_back;
+        auto data_back = msg_back.mutable_data();
+        msg_back.set_desc("matching");
+        data_back->insert(mp("ok", makepbv(true)));
+        string buff_back;
+        msg_back.SerializeToString(&buff_back);
+        ws.send(hdl, buff_back);
     });
 
+    // 匹配确认
     ws.on("matchingSure", _WSONCB_{
-
+        int uid = ws.getInfoByHdl(hdl)->uid;
+        if (!roomManager.confirmEntry(uid))
+            return;
+        Msg msg_back;
+        auto data_back = msg_back.mutable_data();
+        msg_back.set_desc("matching");
+        data_back->insert(mp("ok", makepbv(true)));
+        data_back->insert(mp("uid", makepbv(uid)));
+        string buff_back;
+        msg_back.SerializeToString(&buff_back);
+        auto uids = roomManager.getRoomById(uid)->uids;
+        for (int uid : uids)
+            ws.send(uid, buff_back);
     });
-    ws.on("newDropping", _WSONCB_{
 
+    // 请求一个新的下路块
+    ws.on("newDropping", _WSONCB_{
+        int uid = ws.getInfoByHdl(hdl)->uid;
+        GameRoom* room = roomManager.getRoomById(uid);
+        if (room == NULL || room->status != GameRoom::playing)
+            return;
+        int next = rand() % 19;
+        // TO-DO  记录
+        Msg msg_back;
+        auto data_back = msg_back.mutable_data();
+        msg_back.set_desc("newDropping");
+        data_back->insert(mp("ok", makepbv(true)));
+        data_back->insert(mp("uid", makepbv(uid)));
+        data_back->insert(mp("next", makepbv(next)));
+        string buff_back;
+        msg_back.SerializeToString(&buff_back);
+        for (int uid : room->uids)
+            ws.send(uid, buff_back);
     });
     ws.on("reduce", _WSONCB_{
-
+        vector<int> reduce;
+        CITER iter;
+        iter = data.find("reduce");
+        if (iter == data.cend())
+            return;
+        if (!getpbo(iter->second, reduce))
+            return;
+        // TO-DO 记录
+        int uid = ws.getInfoByHdl(hdl)->uid;
+        GameRoom* room = roomManager.getRoomById(uid);
+        Msg msg_back;
+        auto data_back = msg_back.mutable_data();
+        msg_back.set_desc("reduce");
+        data_back->insert(mp("ok", makepbv(true)));
+        data_back->insert(mp("uid", makepbv(uid)));
+        data_back->insert(mp("reduce", makepbv(reduce)));
+        string buff_back;
+        msg_back.SerializeToString(&buff_back);
+        for (int uid : room->uids)
+            ws.send(uid, buff_back);
     });
     ws.on("blockSet", _WSONCB_{
-
+        
     });
     ws.on("blockRm", _WSONCB_{
 
     });
-    ws.on("", _WSONCB_{
-
-    });
-    ws.on("", _WSONCB_{
+    ws.on("gameOver", _WSONCB_{
 
     });
 };

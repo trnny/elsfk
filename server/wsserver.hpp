@@ -17,6 +17,7 @@
 #include <set>
 #include <map>
 #include "msg.pb.h"
+#include "timer.hpp"
 
 using namespace std;
 
@@ -32,9 +33,9 @@ class WS
 public:
     struct HDLInfo
     {
-        int uid;    // 用户id
-        int rid;    // 用户随机标识  用于重连认证
-        int tmo;    // 超时标记  用于移除重连等待
+        int uid = 0;    // 用户id
+        int rid = 0;    // 用户随机标识  用于重连认证
+        int tmo = 0;    // 超时标记  用于移除重连等待
     };
 private:
     typedef function<void(HDL, const pb_map&)> efbk;
@@ -55,23 +56,43 @@ private:
             return false;
         }
     };
+
     map<HDL, HDLInfo*, cmp_hdl> hdl2info;
     map<int, HDL> uid2hdl;
-    // vector<HDLInfo*> rll;   //  重连队列  超时、重连时移除
-    set<HDLInfo*> rll;  // 使用集合，不使用向量
+    set<HDLInfo*> rll;
     // TO-DO  实现定时器，定时检查重连队列
+    Timer<void(void)> timer;
+    int timerId = 0;
+    void timerOn() {
+        if (timerId) return;
+        timerId = timer.setInterval([&]{
+            vector<HDLInfo*> toDel; // 需要被删除的
+            for (HDLInfo* info : rll)
+                if (info->tmo < 1000) 
+                    toDel.push_back(info);
+                else
+                    info->tmo -= 1000;
+            for (HDLInfo* info : toDel) {
+                rll.erase(info);
+                removeHDL(uid2hdl[info->uid]);
+            }
+            if (rll.empty()) {
+                timer.clearInterval(timerId);
+                timerId = 0;
+            }
+        }, 1000);
+    }
+
 public:
     WS() {
         mep.set_error_channels(websocketpp::log::elevel::all);
         mep.set_access_channels(websocketpp::log::alevel::all ^ websocketpp::log::alevel::frame_payload);
         mep.init_asio();
         mep.set_message_handler([this](HDL hdl, server::message_ptr msg_ptr) {
-            // cout << "收到消息: \n" << msg_ptr->get_payload() << "\n长度: " << msg_ptr->get_payload().size() << endl;
             if(msg_ptr->get_opcode() == websocketpp::frame::opcode::binary) {
                 Msg msg;
                 if (msg.ParseFromString(msg_ptr->get_payload())) {
                     emit(msg.desc(), hdl, msg.data());
-                    // cout << "[MSG DESC] " << msg.desc() << endl;
                 }
                 else
                     cout << "[MSG PARSE ERROR]" << endl;
@@ -81,15 +102,12 @@ public:
             }
         });
         mep.set_close_handler([this](HDL hdl) {
-            // TO-DO 用户断开连接  断开连接时：等待重连队列、移除
             auto iter = hdl2info.find(hdl);
             if (iter != hdl2info.cend()) {
-                // 在还未退出登陆的情况下断开连接
-                iter->second->tmo = 15000;         // 给15秒重连的机会
+                iter->second->tmo = 15000;
                 rll.insert(iter->second);
-                hdl2info.erase(iter);   // 已经断开就没必要在记录了
+                timerOn();  // 启动计时器
             }
-            // cout << "[CLOSE] 客户端断开连接" << endl;
         });
     }
     /**
@@ -98,6 +116,14 @@ public:
      */
     void send(HDL hdl, const string& s) {
         mep.send(hdl, s, websocketpp::frame::opcode::binary);
+    }
+    /**
+     * 向uid发送
+     */
+    void send(int uid, const string& s) {
+        HDL hdl = getHDLByUid(uid);
+        if (hdl.lock())
+            mep.send(hdl, s, websocketpp::frame::opcode::binary);
     }
     /**
      * 指定的端口启动
@@ -163,16 +189,15 @@ public:
      * hdl信息移除掉，返回被移除的uid
      * 未有相关信息 返回0
      */
-    int removeHDL(HDL hdl) {
+    bool removeHDL(HDL hdl) {
         auto iter = hdl2info.find(hdl);
         if (iter != hdl2info.cend()) {
-            int uid = iter->second->uid;
-            uid2hdl.erase(uid);
+            uid2hdl.erase(iter->second->uid);
             hdl2info.erase(iter);
             delete iter->second;
-            return uid;
+            return true;
         }
-        return 0;
+        return false;
     }
     /**
      * 更新hdl，在用户重连时使用
@@ -180,17 +205,16 @@ public:
      * 返回更新是否成功
      */
     bool updateHDL(HDL hdl, int uid, int rid) {
-        auto iter_1 = uid2hdl.find(uid);
-        if (iter_1 == uid2hdl.cend())
-            return false;   // 为找到该重连信息
-        auto iter_2 = hdl2info.find(iter_1->second);
-        if (iter_2 == hdl2info.cend())
-            return false;   // 如果这样，是服务器的bug
-        if (iter_2->second->rid != rid)
+        auto iter = uid2hdl.find(uid);
+        if (iter == uid2hdl.cend())
+            return false;   // 未找到该重连信息
+        HDL oldHdl = iter->second;
+        HDLInfo* info = hdl2info[oldHdl];
+        if (info->rid != rid)
             return false;   // 认证不通过
-        HDLInfo* info = iter_2->second;
-        rll.erase(info);  // 认证通过 从重连队列移除
-        hdl2info.erase(iter_2);
+        info->tmo = 0;
+        rll.erase(info);
+        hdl2info.erase(oldHdl); // 删除旧的
         hdl2info[hdl] = info;
         uid2hdl[uid] = hdl;
         return true;

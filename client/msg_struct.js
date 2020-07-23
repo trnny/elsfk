@@ -30,23 +30,24 @@ signin: {   // 登陆
 
 matching: {         // 请求加入房间
 }
-matchingSure:{
+matchingSure:{      // 
 }
 newDropping: {
 }
 
 reduce: {
-    reduce  // [a0*1+a1*64+a2*64*64... , ...]  一个int表示一轮消除  多轮消除的数组
+    reduce  // 
 }
 
 blockSet: {
-    uid
     blocks  // [y*256+x, y*256+x ...] 四个坐标序列
 }
 
 blockRm: {
-    uid
     blocks  // [y*256+x, y*256+x ...] 四个坐标序列
+}
+
+gameOver: {
 }
 
 
@@ -67,7 +68,6 @@ signin: {
 
 matching: {
     ok
-    msg
 }
 matchingSure : {        // 确认
     ok
@@ -76,9 +76,16 @@ matchingSure : {        // 确认
 matchingSucceed: {
     uids // [uid, uid ...] 长度4 玩家们
 }
+matchingCancel: {
+}
 
 gameStart: {
     unn // [uid,now,next ... ] 长度12 玩家们和他们的块
+}
+
+gameOver: {
+    ok
+    uid // 0表示全结束
 }
 
 
@@ -91,7 +98,7 @@ newDropping: {
 reduce: {
     ok
     uid
-    reduce  // [a0*1+a1*64+a2*64*64... , ...]  一个int表示一轮消除  多轮消除的数组
+    reduce  // 先降成一维int数组再发送
 }
 
 blockSet: {
