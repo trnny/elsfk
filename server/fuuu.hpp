@@ -7,23 +7,24 @@
  * 给ws注册事件，用于处理消息
  */
 
+#include <sys/time.h>
 #include "wsserver.hpp"
 #include "mysql/mysqlfuuu.hpp"
 #include "game.hpp"
 
 
-Msg_VType makepbv(const vector<int>& o) {
+Msg_VType makepbv(const std::vector<int>& o) {
     Msg_VType v;
-    for (int i = 0; i < o.size(); i++) {
+    for (size_t i = 0; i < o.size(); i++) {
         v.set_vr_int(i, o[i]);
     }
     v.set_which(5);
     return v;
 }
 
-Msg_VType makepbv(const vector<string>& o) {
+Msg_VType makepbv(const std::vector<std::string>& o) {
     Msg_VType v;
-    for (int i = 0; i < o.size(); i++) {
+    for (size_t i = 0; i < o.size(); i++) {
         v.set_vr_str(i, o[i]);
     }
     v.set_which(4);
@@ -44,7 +45,7 @@ Msg_VType makepbv(int o) {
     return v;
 }
 
-Msg_VType makepbv(const string& o, bool bin = false) {
+Msg_VType makepbv(const std::string& o, bool bin = false) {
     Msg_VType v;
     if (!bin) {
         v.set_v_str(o);
@@ -65,7 +66,7 @@ Msg_VType makepbv(const char* o) {
     return v;
 }
 
-bool getpbo(const Msg_VType& v, vector<int>& o) {
+bool getpbo(const Msg_VType& v, std::vector<int>& o) {
     if (v.which() == 5) {
         o.resize(v.vr_int_size());
         for(int i = 0;i<v.vr_int_size(); i++) {
@@ -76,7 +77,7 @@ bool getpbo(const Msg_VType& v, vector<int>& o) {
     return false;
 }
 
-bool getpbo(const Msg_VType& v, vector<string>& o) {
+bool getpbo(const Msg_VType& v, std::vector<std::string>& o) {
     if (v.which() == 4) {
         o.resize(v.vr_str_size());
         for(int i = 0;i<v.vr_str_size(); i++) {
@@ -103,7 +104,7 @@ bool getpbo(const Msg_VType& v, int& o) {
     return false;
 }
 
-bool getpbo(const Msg_VType& v, string& o) {
+bool getpbo(const Msg_VType& v, std::string& o) {
     if (v.which() == 1) {
         o = v.v_str();
         return true;
@@ -115,15 +116,13 @@ bool getpbo(const Msg_VType& v, string& o) {
     return false;
 }
 
-MyMysql sql;
-vector<vector<string>> tab;
-GameRoomManager roomManager;
-#define _WSONCB_ [&ws](HDL hdl, const pb_map& data)
+std::vector<std::vector<std::string>> tab;
+#define _WSONCB_ [](HDL hdl, const pb_map& data)
 
 /**
  * 新加入一个用户
  */
-int new_user(const string& un, const string& pw) {
+int new_user(const std::string& un, const std::string& pw) {
     // TO-DO 从redis读取ucount、max_uid
     static int ucount = 2, max_uid = 10084;
     int retry = 6, u_id;
@@ -151,8 +150,18 @@ int new_user(const string& un, const string& pw) {
     return u_id;
 }
 
+/**
+ * 获取时间戳 ms
+ */
+uint64_t get_ms() {
+    struct timeval tv;
+    struct timezone tz;
+    gettimeofday(&tv, &tz);
+    return tv.tv_usec / 1000;
+}
+
 // 给ws注册事件     ws是否需要弄成全局变量?  似乎一个ws服务器就够了
-void ws_on(WS &ws) {
+void ws_on() {
 
     /**
      * 告知所有人 匹配成功 等待大家点确定
@@ -162,9 +171,9 @@ void ws_on(WS &ws) {
         auto data_back = msg_back.mutable_data();
         msg_back.set_desc("matchingSucceed");
         data_back->insert(mp("uids", makepbv(room->uids)));
-        string buff_back;
+        std::string buff_back;
         msg_back.SerializeToString(&buff_back);
-        for (int uid : room->uids) 
+        for (int uid : room->uids)  // 长度4
             ws.send(uid, buff_back);
     };
 
@@ -174,9 +183,9 @@ void ws_on(WS &ws) {
     roomManager.onCancel = [&](GameRoom* room) {
         Msg msg_back;
         msg_back.set_desc("matchingCancel");
-        string buff_back;
+        std::string buff_back;
         msg_back.SerializeToString(&buff_back);
-        for (int uid : room->uids) 
+        for (int uid : room->uids)  // 长度4
             ws.send(uid, buff_back);
     };
 
@@ -184,9 +193,10 @@ void ws_on(WS &ws) {
      * 告知所有人 大家都点了确定 游戏开始了
      */
     roomManager.onPlay = [&](GameRoom* room) {
-        vector<char> nxn;   // 用于记录
-        vector<int> unn;    // 发往客户端
+        std::vector<char> nxn;   // 用于记录
+        std::vector<int> unn;    // 发往客户端
         unsigned char now, next, mix;
+        room->lastTime = room->startTime = get_ms();
         for (int uid : room->uids) {
             now = rand() % 16;
             next = rand() % 16;
@@ -204,10 +214,11 @@ void ws_on(WS &ws) {
         auto data_back = msg_back.mutable_data();
         msg_back.set_desc("gameStart");
         data_back->insert(mp("unn", makepbv(unn)));
-        string buff_back;
+        std::string buff_back;
         msg_back.SerializeToString(&buff_back);
-        for (int uid : room->uids) 
+        for (int uid : room->uids)  // 长度4
             ws.send(uid, buff_back);
+        // TO-DO 更新记录 数据库
     };
 
     /**
@@ -219,15 +230,19 @@ void ws_on(WS &ws) {
         msg_back.set_desc("gameOver");
         data_back->insert(mp("ok", makepbv(true)));
         data_back->insert(mp("uid", makepbv(0)));   // 0表示大家都结束了
-        string buff_back;
+        std::string buff_back;
         msg_back.SerializeToString(&buff_back);
-        for (int uid : room->uids) 
+        for (int uid : room->uids)  // 长度4
             ws.send(uid, buff_back);
+        // TO-DO  更新记录 数据库 room->record
+        room->record.push(-1);
+        std::string record = room->record.getBuffer();
+        // TO-DO 将record保存
     };
 
     // signup  注册
     ws.on("signup", _WSONCB_{
-        string uname, password;
+        std::string uname, password;
         CITER iter;
         iter = data.find("uname");
         if (iter == data.cend())
@@ -242,7 +257,7 @@ void ws_on(WS &ws) {
         Msg msg_back;
         auto data_back = msg_back.mutable_data();
         bool ok = true;
-        string tips = "注册成功!";
+        std::string tips = "注册成功!";
         msg_back.set_desc("signup");
         int u_id = new_user(uname, password);
         if (u_id)
@@ -253,7 +268,7 @@ void ws_on(WS &ws) {
         }
         data_back->insert(mp("ok", makepbv(ok)));
         data_back->insert(mp("msg", makepbv(tips)));
-        string buff_back;
+        std::string buff_back;
         msg_back.SerializeToString(&buff_back);
         ws.send(hdl, buff_back);
     });
@@ -261,7 +276,7 @@ void ws_on(WS &ws) {
     // signin  登陆
     ws.on("signin", _WSONCB_{
         int uid;
-        string password;
+        std::string password;
         CITER iter;
         iter = data.find("uid");
         if (iter == data.cend())
@@ -276,7 +291,7 @@ void ws_on(WS &ws) {
         Msg msg_back;
         auto data_back = msg_back.mutable_data();
         bool ok = true;
-        string tips = "登陆成功!";
+        std::string tips = "登陆成功!";
         msg_back.set_desc("signin");
         if (sql.query("select u_passwd from elsfk_users where u_id=" + std::to_string(uid)) && sql.result(tab)) {
             if (tab.size() == 0) {
@@ -298,12 +313,12 @@ void ws_on(WS &ws) {
             // 登陆成功  获取rid，以便后面重连
             data_back->insert(mp("rid", makepbv(ws.addHDLAndUid(uid, hdl))));
             if (!sql.query("insert into elsfk_login (u_id) values (" + std::to_string(uid) + " )")){
-                cout << "[WS WARNING] 用户[" << uid << "]登陆成功，但写入数据库失败!" << endl;
+                std::cout << "[WS WARNING] 用户[" << uid << "]登陆成功，但写入数据库失败!" << std::endl;
             }
         }
         data_back->insert(mp("ok", makepbv(ok)));
         data_back->insert(mp("msg", makepbv(tips)));
-        string buff_back;
+        std::string buff_back;
         msg_back.SerializeToString(&buff_back);
         ws.send(hdl, buff_back);
     });
@@ -330,7 +345,7 @@ void ws_on(WS &ws) {
         Msg msg_back;
         auto data_back = msg_back.mutable_data();
         bool ok = true;
-        string tips = "重连成功!";
+        std::string tips = "重连成功!";
         if (!ws.updateHDL(hdl, uid, rid)) {
             ok = false;
             tips = "重连失败";
@@ -338,7 +353,7 @@ void ws_on(WS &ws) {
         msg_back.set_desc("userrelink");
         data_back->insert(mp("ok", makepbv(ok)));
         data_back->insert(mp("msg", makepbv(tips)));
-        string buff_back;
+        std::string buff_back;
         msg_back.SerializeToString(&buff_back);
         ws.send(hdl, buff_back);
     });
@@ -350,9 +365,10 @@ void ws_on(WS &ws) {
         auto data_back = msg_back.mutable_data();
         msg_back.set_desc("logout");
         data_back->insert(mp("ok", makepbv(true)));
-        string buff_back;
+        std::string buff_back;
         msg_back.SerializeToString(&buff_back);
         ws.send(hdl, buff_back);
+        // TO-DO 更新记录 数据库
     });
     
     // 匹配请求
@@ -363,7 +379,7 @@ void ws_on(WS &ws) {
         auto data_back = msg_back.mutable_data();
         msg_back.set_desc("matching");
         data_back->insert(mp("ok", makepbv(true)));
-        string buff_back;
+        std::string buff_back;
         msg_back.SerializeToString(&buff_back);
         ws.send(hdl, buff_back);
     });
@@ -375,65 +391,141 @@ void ws_on(WS &ws) {
             return;
         Msg msg_back;
         auto data_back = msg_back.mutable_data();
-        msg_back.set_desc("matching");
+        msg_back.set_desc("matchingSure");
         data_back->insert(mp("ok", makepbv(true)));
         data_back->insert(mp("uid", makepbv(uid)));
-        string buff_back;
+        std::string buff_back;
         msg_back.SerializeToString(&buff_back);
         auto uids = roomManager.getRoomById(uid)->uids;
-        for (int uid : uids)
-            ws.send(uid, buff_back);
+        for (int i = 0; i < 4; i++) 
+            ws.send(uids[i], buff_back);
     });
 
-    // 请求一个新的下路块
+    // 匹配放弃
+    ws.on("playerCancel", _WSONCB_{
+        if (!roomManager.getOutRoom(ws.getInfoByHdl(hdl)->uid))
+            return;
+        Msg msg_back;
+        auto data_back = msg_back.mutable_data();
+        msg_back.set_desc("playerCancel");
+        data_back->insert(mp("ok", makepbv(true)));
+        std::string buff_back;
+        msg_back.SerializeToString(&buff_back);
+        ws.send(hdl, buff_back);
+    });
+
+    // 特殊
     ws.on("newDropping", _WSONCB_{
+        int next = rand() % 19;
         int uid = ws.getInfoByHdl(hdl)->uid;
         GameRoom* room = roomManager.getRoomById(uid);
         if (room == NULL || room->status != GameRoom::playing)
             return;
-        int next = rand() % 19;
-        // TO-DO  记录
+        // 记录
+        uint64_t now = get_ms();
+        room->record.push((char)(room->id2idx[uid]));
+        room->record.push((char)next);
+        room->record.push((int16_t)(now - room->lastTime));
+        room->lastTime = now;
+        // 记录完成
         Msg msg_back;
         auto data_back = msg_back.mutable_data();
         msg_back.set_desc("newDropping");
         data_back->insert(mp("ok", makepbv(true)));
         data_back->insert(mp("uid", makepbv(uid)));
         data_back->insert(mp("next", makepbv(next)));
-        string buff_back;
+        std::string buff_back;
         msg_back.SerializeToString(&buff_back);
-        for (int uid : room->uids)
-            ws.send(uid, buff_back);
+        for (int i = 0; i < 4; i++) 
+            ws.send(room->uids[i], buff_back);
     });
+    // 变长
     ws.on("reduce", _WSONCB_{
-        vector<int> reduce;
+        std::vector<int> reduce;
         CITER iter;
         iter = data.find("reduce");
         if (iter == data.cend())
             return;
         if (!getpbo(iter->second, reduce))
             return;
-        // TO-DO 记录
         int uid = ws.getInfoByHdl(hdl)->uid;
         GameRoom* room = roomManager.getRoomById(uid);
+        if (room == NULL || room->status != GameRoom::playing)
+            return;
+        // 记录
+        uint64_t now = get_ms();
+        room->record.push((char)(room->id2idx[uid]));
+        room->record.push((char)(63 + reduce.size()));
+        room->record.push((int16_t)(now - room->lastTime));
+        for (int bytes : reduce)
+            room->record.push(bytes);
+        room->lastTime = now;
+        // 记录完成
         Msg msg_back;
         auto data_back = msg_back.mutable_data();
         msg_back.set_desc("reduce");
         data_back->insert(mp("ok", makepbv(true)));
         data_back->insert(mp("uid", makepbv(uid)));
         data_back->insert(mp("reduce", makepbv(reduce)));
-        string buff_back;
+        std::string buff_back;
         msg_back.SerializeToString(&buff_back);
-        for (int uid : room->uids)
-            ws.send(uid, buff_back);
+        for (int i = 0; i < 4; i++) 
+            ws.send(room->uids[i], buff_back);
     });
-    ws.on("blockSet", _WSONCB_{
-        
+    // 定长4
+    ws.on("posChanged", _WSONCB_{
+        int pos;
+        CITER iter;
+        iter = data.find("pos");
+        if (iter == data.cend())
+            return;
+        if (!getpbo(iter->second, pos))
+            return;
+        int uid = ws.getInfoByHdl(hdl)->uid;
+        GameRoom* room = roomManager.getRoomById(uid);
+        if (room == NULL || room->status != GameRoom::playing)
+            return;
+        // 记录
+        uint64_t now  = get_ms();
+        room->record.push((char)(room->id2idx[uid]));
+        room->record.push((char)19);
+        room->record.push((int16_t)(now - room->lastTime));
+        room->record.push(pos);
+        room->lastTime = now;
+        // 记录完成
+        Msg msg_back;
+        auto data_back = msg_back.mutable_data();
+        msg_back.set_desc("posChanged");
+        data_back->insert(mp("ok", makepbv(true)));
+        data_back->insert(mp("uid", makepbv(uid)));
+        data_back->insert(mp("pos", makepbv(pos)));
+        std::string buff_back;
+        msg_back.SerializeToString(&buff_back);
+        for (int i = 0; i < 4; i++) 
+            ws.send(room->uids[i], buff_back);
     });
-    ws.on("blockRm", _WSONCB_{
-
-    });
+    // 定长0
     ws.on("gameOver", _WSONCB_{
-
+        int uid = ws.getInfoByHdl(hdl)->uid;
+        GameRoom* room = roomManager.gameOver(uid);
+        if (room == NULL)   // 最后一个结束的人不会收到自己结束 会收到整个游戏结束
+            return;
+        // 记录
+        uint64_t now  = get_ms();
+        room->record.push((char)(room->id2idx[uid]));
+        room->record.push((char)20);
+        room->record.push((int16_t)(now - room->lastTime));
+        room->lastTime = now;
+        // 记录完成
+        Msg msg_back;
+        auto data_back = msg_back.mutable_data();
+        msg_back.set_desc("gameOver");
+        data_back->insert(mp("ok", makepbv(true)));
+        data_back->insert(mp("uid", makepbv(uid)));
+        std::string buff_back;
+        msg_back.SerializeToString(&buff_back);
+        for (int i = 0; i < 4; i++) 
+            ws.send(room->uids[i], buff_back);
     });
 };
 

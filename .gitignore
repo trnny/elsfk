@@ -8,3 +8,8 @@ server/mysql/function_test/main
 server/test.o
 server/test
 server/server
+server/mysql/function_test/timer.h
+server/mysql/function_test/timer.cpp
+server/mysql/function_test/test_timer.cpp
+server/mysql/function_test/test_timer
+server/msg.pb.o

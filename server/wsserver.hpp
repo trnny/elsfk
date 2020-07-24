@@ -17,15 +17,13 @@
 #include <set>
 #include <map>
 #include "msg.pb.h"
-#include "timer.hpp"
-
-using namespace std;
+#include "timer.h"
 
 typedef websocketpp::server<websocketpp::config::asio> server;
-typedef google::protobuf::Map<string, Msg_VType> pb_map;
-typedef google::protobuf::MapPair<string, Msg_VType> mp;
-typedef google::protobuf::Map<string, Msg_VType>::const_iterator CITER;
-typedef google::protobuf::Map<string, Msg_VType>::iterator ITER;
+typedef google::protobuf::Map<std::string, Msg_VType> pb_map;
+typedef google::protobuf::MapPair<std::string, Msg_VType> mp;
+typedef google::protobuf::Map<std::string, Msg_VType>::const_iterator CITER;
+typedef google::protobuf::Map<std::string, Msg_VType>::iterator ITER;
 typedef websocketpp::connection_hdl HDL;
 
 class WS
@@ -36,12 +34,16 @@ public:
         int uid = 0;    // 用户id
         int rid = 0;    // 用户随机标识  用于重连认证
         int tmo = 0;    // 超时标记  用于移除重连等待
+        HDLInfo (int u, int r) {
+            uid = u;
+            rid = r;
+        }
     };
 private:
-    typedef function<void(HDL, const pb_map&)> efbk;
-    map<string, vector<efbk>> ee;
+    typedef std::function<void(HDL, const pb_map&)> efbk;
+    std::map<std::string, std::vector<efbk>> ee;
     server mep;
-    void emit(const string& en, HDL t1, const pb_map& t2) {
+    void emit(const std::string& en, HDL t1, const pb_map& t2) {
         auto iter = ee.find(en);
         if (iter != ee.cend())
             for (auto ef : iter->second)
@@ -57,16 +59,15 @@ private:
         }
     };
 
-    map<HDL, HDLInfo*, cmp_hdl> hdl2info;
-    map<int, HDL> uid2hdl;
-    set<HDLInfo*> rll;
+    std::map<HDL, HDLInfo*, cmp_hdl> hdl2info;
+    std::map<int, HDL> uid2hdl;
+    std::set<HDLInfo*> rll;
     // TO-DO  实现定时器，定时检查重连队列
-    Timer<void(void)> timer;
     int timerId = 0;
     void timerOn() {
         if (timerId) return;
-        timerId = timer.setInterval([&]{
-            vector<HDLInfo*> toDel; // 需要被删除的
+        timerId = setInterval([&]{
+            std::vector<HDLInfo*> toDel; // 需要被删除的
             for (HDLInfo* info : rll)
                 if (info->tmo < 1000) 
                     toDel.push_back(info);
@@ -77,7 +78,7 @@ private:
                 removeHDL(uid2hdl[info->uid]);
             }
             if (rll.empty()) {
-                timer.clearInterval(timerId);
+                clearInterval(timerId);
                 timerId = 0;
             }
         }, 1000);
@@ -95,10 +96,10 @@ public:
                     emit(msg.desc(), hdl, msg.data());
                 }
                 else
-                    cout << "[MSG PARSE ERROR]" << endl;
+                    std::cout << "[MSG PARSE ERROR]" << std::endl;
             }
             else{
-                cout << "[UNKOWN MSG] "<< endl;
+                std::cout << "[UNKOWN MSG] "<< std::endl;
             }
         });
         mep.set_close_handler([this](HDL hdl) {
@@ -114,13 +115,13 @@ public:
      * 发送二进制消息
      * 目前，应该是发送pb序列化结果
      */
-    void send(HDL hdl, const string& s) {
+    void send(HDL hdl, const std::string& s) {
         mep.send(hdl, s, websocketpp::frame::opcode::binary);
     }
     /**
      * 向uid发送
      */
-    void send(int uid, const string& s) {
+    void send(int uid, const std::string& s) {
         HDL hdl = getHDLByUid(uid);
         if (hdl.lock())
             mep.send(hdl, s, websocketpp::frame::opcode::binary);
@@ -136,7 +137,7 @@ public:
     /**
      * 注册事件
      */
-    void on(const string& en, efbk fbk) {
+    void on(const std::string& en, efbk fbk) {
         if(en.length() && fbk)
             ee[en].push_back(fbk);
     }
@@ -144,7 +145,7 @@ public:
      * 移除事件
      * 是移除事件的所有处理函数 暂时用不到
      */
-    void remove(const string& en) {
+    void remove(const std::string& en) {
         auto iter = ee.find(en);
         if (ee.cend() != iter)
             ee.erase(iter);
@@ -179,7 +180,7 @@ public:
     int addHDLAndUid(int uid, HDL hdl) {
         if (uid && hdl.lock()) {
             int rid = rand();
-            hdl2info[hdl] = new HDLInfo({uid, rid, 0});
+            hdl2info[hdl] = new HDLInfo(uid, rid);
             uid2hdl[uid] = hdl;
             return rid;
         }
@@ -219,7 +220,7 @@ public:
         uid2hdl[uid] = hdl;
         return true;
     }
-};
+}ws;    // 与std::ws重名
 
 
 

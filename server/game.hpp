@@ -10,16 +10,9 @@
 #include <map>
 #include <vector>
 #include <string>
-#include <stack>
 #include <functional>
-#include "timer.hpp"
+#include "timer.h"
 
-using std::set;
-using std::map;
-using std::vector;
-using std::string;
-using std::stack;
-using std::function;
 
 /**
  * 存取记录
@@ -33,7 +26,7 @@ class GameRecord {
      * 这4字节中 1字节表示uid的标号 1字节表示事件 2个字节表示本事件与上个事件的时间间隔ms
      * 事件附带的信息跟在事件后
      */
-    string buffer;
+    std::string buffer;
 public:
     void push(int bytes) {
         static char b[4];
@@ -52,7 +45,7 @@ public:
     void push(char byte) {
         buffer.push_back(byte);
     }
-    const string& getBuffer() const {
+    const std::string& getBuffer() const {
         return buffer;
     };
 };
@@ -62,10 +55,10 @@ public:
  */
 struct GameRoom {
 public:
-    vector<int> uids;       // idx 2 id  匹配和确认等
-    map<int, int> id2idx;   // 通过id找idx
-    int startTime;  // 开始时间
-    int lastTime;   // 上次时间
+    std::vector<int> uids;       // idx 2 id  匹配和确认等
+    std::map<int, int> id2idx;   // 通过id找idx
+    uint64_t startTime;  // 开始时间
+    uint64_t lastTime;   // 上次时间
     enum Status{
         matching,   // 还在匹配中
         waiting,    // 匹配上了 还在等确认
@@ -80,9 +73,8 @@ public:
  * 管理房间
  */
 class GameRoomManager {
-    Timer<void(void)> timer;
-    map<int, GameRoom*> rooms;      // 通过uid找room  有matching、waiting、playing三种
-    set<GameRoom*> matching;        // 正在匹配的房间  有matching、waiting、cancel三种
+    std::map<int, GameRoom*> rooms;      // 通过uid找room  有matching、waiting、playing三种
+    std::set<GameRoom*> matching;        // 正在匹配的房间  有matching、waiting、cancel三种
 public:
     /**
      * 处理函数
@@ -91,7 +83,7 @@ public:
      * onPlay   玩家均确定  开始游戏
      * onOver  玩家均阵亡  游戏结束
      */
-    function<void(GameRoom*)> onMatch = NULL, onCancel = NULL, onPlay = NULL, onOver = NULL;
+    std::function<void(GameRoom*)> onMatch = NULL, onCancel = NULL, onPlay = NULL, onOver = NULL;
     /**
      * 获取房间信息
      */
@@ -108,7 +100,8 @@ public:
      * 超时未全部确认触发onCancel
      */
     bool getIntoRoom(int uid) {
-        if (getRoomById(uid)) return false;
+        if (getRoomById(uid)) 
+            return false;
         for (GameRoom* room : matching) {
             if (room->status == GameRoom::cancel) {
                 room->uids.push_back(uid);
@@ -126,7 +119,7 @@ public:
                     if (onMatch) 
                         onMatch(room);
                     // TO-DO 定时器还未实现 其实无法取消
-                    room->uids.push_back(timer.setTimeout([&]{
+                    room->uids.push_back(setTimeout([&]{
                         room->uids.resize(4);
                         room->status = GameRoom::cancel;
                         if (onCancel) 
@@ -149,18 +142,39 @@ public:
         return true;
     }
     /**
+     * uid取消匹配 从房间退出
+     * 返回退出是否成功
+     */
+    bool getOutRoom(int uid) {
+        GameRoom* room = getRoomById(uid);
+        if (room == NULL || room->status != GameRoom::matching)
+            return false;
+        rooms.erase(uid);
+        room->id2idx.clear();
+        int idx = 0;
+        for (auto iter = room->uids.begin(); iter != room->uids.end();)
+            if (*iter == uid)
+                iter = room->uids.erase(iter);
+            else
+                room->id2idx[*iter++] = idx++;
+        if (room->uids.empty())
+            room->status = GameRoom::cancel;
+        return true;
+    }
+    /**
      * uid确认进入游戏
      * 全部确认触发onPlay
      */
     bool confirmEntry(int uid) {
         GameRoom* room = getRoomById(uid);
-        if (room == NULL || room->status != GameRoom::waiting) return false;
-        for (int i = 5; i < room->uids.size(); i++)
+        if (room == NULL || room->status != GameRoom::waiting) 
+            return false;
+        for (size_t i = 5; i < room->uids.size(); i++)
             if (uid == room->uids[i]) 
                 return false;
         room->uids.push_back(uid);
         if (room->uids.size() >= 9) {
-            timer.clearTimeout(room->uids[4]);
+            clearTimeout(room->uids[4]);
             room->uids.resize(4);
             room->status = GameRoom::playing;
             if (onPlay)
@@ -173,12 +187,13 @@ public:
      * uid阵亡
      * 全部阵亡触发onOver
      */
-    bool gameOver(int uid) {
+    GameRoom* gameOver(int uid) {
         GameRoom* room = getRoomById(uid);
-        if (room == NULL || room->status != GameRoom::playing) return false;
-        for (int i = 4; i < room->uids.size(); i++) 
+        if (room == NULL || room->status != GameRoom::playing) 
+            return NULL;
+        for (size_t i = 4; i < room->uids.size(); i++) 
             if (uid == room->uids[i])
-                return false;
+                return NULL;
         room->uids.push_back(uid);
         if (room->uids.size() >= 8) {
             room->uids.resize(4);
@@ -188,10 +203,11 @@ public:
             for (int uid : room->uids)
                 rooms.erase(uid);
             delete room;
+            return NULL;
         }
-        return true;
+        return room;
     }
-};
+}roomManager;
 
 
 #endif

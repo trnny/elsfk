@@ -39,12 +39,8 @@ reduce: {
     reduce  // 
 }
 
-blockSet: {
-    blocks  // [y*256+x, y*256+x ...] 四个坐标序列
-}
-
-blockRm: {
-    blocks  // [y*256+x, y*256+x ...] 四个坐标序列
+posChanged: {
+    pos  // int: y*256+x
 }
 
 gameOver: {
@@ -101,14 +97,8 @@ reduce: {
     reduce  // 先降成一维int数组再发送
 }
 
-blockSet: {
+posChanged: {
     ok
     uid
-    blocks  // [y*256+x, y*256+x ...] 四个坐标序列
-}
-
-blockRm: {
-    ok
-    uid
-    blocks  // [y*256+x, y*256+x ...] 四个坐标序列
+    pos  // int: y*256+x
 }

@@ -17,8 +17,6 @@
 
 #define _PRMYSQLERR_  std::cerr << "[MySQL ERROR] errno:" << mysql_errno(conn) << " error:" << mysql_error(conn) << std::endl;
 
-using std::vector;
-using std::string;
 
 class SimpleLock{
     bool islock = false;
@@ -29,9 +27,7 @@ class SimpleLock{
     void done() {
         islock = false;
     }
-};
-
-SimpleLock lock;
+}lock;
 
 class MyMysql {
     bool ok = false;
@@ -86,7 +82,7 @@ public:
      *             select语句的结果不要使用affectd_rows获取，不能正常获取
      *             可以使用result保存到table里，根据table.size()获取行数
      */
-    bool query(const string& q) {
+    bool query(const std::string& q) {
         return query(q.c_str());
     }
     /**
@@ -94,7 +90,7 @@ public:
      * 读取成功则将结果放入二维字符串向量c中
      * 返回读取是否成功
      */
-    bool result(vector<vector<string>>& c) {
+    bool result(std::vector<std::vector<std::string>>& c) {
         if (!ok) return false;
         res = mysql_store_result(conn);     // 结果0行也会成功
         auto col = mysql_field_count(conn);
@@ -125,7 +121,7 @@ public:
         if (!ok) return -1;
         return mysql_affected_rows(conn);
     }
-};
+}sql;
 
 
 #endif
