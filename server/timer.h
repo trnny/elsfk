@@ -11,7 +11,6 @@
 
 typedef std::function<void(void)> FT;
 
-void timerInit();
 int setTimeout(FT callback, uint ms);
 int setInterval(FT callback, uint ms);
 void clearTimeout(int timeoutId);

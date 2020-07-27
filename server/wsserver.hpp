@@ -62,7 +62,6 @@ private:
     std::map<HDL, HDLInfo*, cmp_hdl> hdl2info;
     std::map<int, HDL> uid2hdl;
     std::set<HDLInfo*> rll;
-    // TO-DO  实现定时器，定时检查重连队列
     int timerId = 0;
     void timerOn() {
         if (timerId) return;
@@ -99,7 +98,7 @@ public:
                     std::cout << "[MSG PARSE ERROR]" << std::endl;
             }
             else{
-                std::cout << "[UNKOWN MSG] "<< std::endl;
+                std::cout << "[UNKOWN MSG] " << std::endl;
             }
         });
         mep.set_close_handler([this](HDL hdl) {

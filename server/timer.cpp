@@ -7,31 +7,31 @@
 #include "timer.h"
 
 
-int tid = 0;
-struct cbms{
+int _id = 0;
+struct _cbms{
     FT  cb;
-    uint ms;    // 剩余时间
-    uint it;    // 重复 0表示不重复
+    uint ms;
+    uint it;
 };
 
-itimerval it;
-std::map<int, cbms> dl;
-bool running = false;
-void start() {
-    if (running) return;
-    running = true;
-    it.it_interval.tv_usec = 1000;
-    it.it_value.tv_usec = 1000;
-    setitimer(ITIMER_REAL, &it, NULL);
+itimerval _it;
+std::map<int, _cbms> _dl;
+bool _running = false;
+void _start() {
+    if (_running) return;
+    _running = true;
+    _it.it_interval.tv_usec = 1000;
+    _it.it_value.tv_usec = 1000;
+    setitimer(ITIMER_REAL, &_it, NULL);
 }
-void timerHandler(int signo) {
+void _handler(int signo) {
     static std::vector<FT> cbs;
     cbs.clear();
-    for (auto iter = dl.begin(); iter != dl.end();) {
+    for (auto iter = _dl.begin(); iter != _dl.end();) {
         if (--iter->second.ms == 0) {
             cbs.push_back(iter->second.cb);
             if (iter->second.it == 0)
-                iter = dl.erase(iter);
+                iter = _dl.erase(iter);
             else {
                 iter->second.ms = iter->second.it;
                 ++iter;
@@ -42,34 +42,41 @@ void timerHandler(int signo) {
     }
     for (FT cb : cbs)
         cb();
-    if (dl.empty()) {
-        it.it_value.tv_usec = 0;
-        it.it_interval.tv_usec = 0;
-        running = false;
+    if (_dl.empty()) {
+        _it.it_value.tv_usec = 0;
+        _it.it_interval.tv_usec = 0;
+        _running = false;
     }
 }
-void timerInit(){
-    if (tid) return;
-    tid = 1;
-    signal(SIGALRM, timerHandler);
-}
+
 int setTimeout(FT callback, uint ms) {
-    dl[++tid] = {callback, ms, 0};
-    start();
-    return tid;
+    ms == 0 && (ms = 1);
+    _dl[_id] = {callback, ms, 0};
+    _start();
+    return _id++;
 }
 int setInterval(FT callback, uint ms) {
-    dl[++tid] = {callback, ms, ms};
-    start();
-    return tid;
+    ms == 0 && (ms = 1);
+    _dl[_id] = {callback, ms, ms};
+    _start();
+    return _id++;
 }
 void clearTimeout(int timeoutId) {
-    auto iter = dl.find(timeoutId);
-    if (iter != dl.cend()) 
-        dl.erase(iter);
+    auto iter = _dl.find(timeoutId);
+    if (iter != _dl.cend()) 
+        _dl.erase(iter);
 }
 void clearInterval(int intervalId) {
-    auto iter = dl.find(intervalId);
-    if (iter != dl.cend()) 
-        dl.erase(iter);
+    auto iter = _dl.find(intervalId);
+    if (iter != _dl.cend()) 
+        _dl.erase(iter);
 }
+
+class _T{   // 用来初始化timer
+public:
+    _T() {
+        if (_id) return;
+        _id = 1;
+        signal(SIGALRM, _handler);
+    }
+}_t;

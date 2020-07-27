@@ -118,8 +118,7 @@ public:
                     room->status = GameRoom::waiting;
                     if (onMatch) 
                         onMatch(room);
-                    // TO-DO 定时器还未实现 其实无法取消
-                    room->uids.push_back(setTimeout([&]{
+                    room->uids.push_back(setTimeout([&, room]{
                         room->uids.resize(4);
                         room->status = GameRoom::cancel;
                         if (onCancel) 
@@ -129,6 +128,7 @@ public:
                         room->uids.clear();
                         room->id2idx.clear();
                     }, 10000));
+                    return false;   // 最后加入的人不发送
                 }
                 return true;
             }
@@ -195,8 +195,7 @@ public:
             if (uid == room->uids[i])
                 return NULL;
         room->uids.push_back(uid);
-        if (room->uids.size() >= 8) {
-            room->uids.resize(4);
+        if (room->uids.size() >= 9) {
             room->status = GameRoom::over;
             if (onOver) 
                 onOver(room);

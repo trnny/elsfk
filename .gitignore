@@ -13,3 +13,5 @@ server/mysql/function_test/timer.cpp
 server/mysql/function_test/test_timer.cpp
 server/mysql/function_test/test_timer
 server/msg.pb.o
+本周工作报告0724.doc
+.gitignore

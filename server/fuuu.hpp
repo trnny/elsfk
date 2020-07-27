@@ -15,18 +15,16 @@
 
 Msg_VType makepbv(const std::vector<int>& o) {
     Msg_VType v;
-    for (size_t i = 0; i < o.size(); i++) {
-        v.set_vr_int(i, o[i]);
-    }
+    for (int i : o)
+        v.add_vr_int(i);
     v.set_which(5);
     return v;
 }
 
 Msg_VType makepbv(const std::vector<std::string>& o) {
     Msg_VType v;
-    for (size_t i = 0; i < o.size(); i++) {
-        v.set_vr_str(i, o[i]);
-    }
+    for (const std::string& s : o)
+        v.add_vr_str(s);
     v.set_which(4);
     return v;
 }
@@ -160,7 +158,7 @@ uint64_t get_ms() {
     return tv.tv_usec / 1000;
 }
 
-// 给ws注册事件     ws是否需要弄成全局变量?  似乎一个ws服务器就够了
+// 给ws注册事件
 void ws_on() {
 
     /**
@@ -218,6 +216,13 @@ void ws_on() {
         msg_back.SerializeToString(&buff_back);
         for (int uid : room->uids)  // 长度4
             ws.send(uid, buff_back);
+        // 启动定时器 检查房间是否断线
+        room->uids.push_back(setInterval([&]{
+            if (get_ms() - room->lastTime > 9999) {
+                if (roomManager.onOver) // 理论上这是true
+                    roomManager.onOver(room);
+            }
+        }, 3000));
         // TO-DO 更新记录 数据库
     };
 
@@ -225,6 +230,9 @@ void ws_on() {
      * 告知所有人  大家都阵亡了 游戏结束了
      */
     roomManager.onOver = [&](GameRoom* room) {
+        // 关闭定时器  使room->uids长度4
+        clearInterval(room->uids[4]);
+        room->uids.resize(4);
         Msg msg_back;
         auto data_back = msg_back.mutable_data();
         msg_back.set_desc("gameOver");
@@ -234,7 +242,6 @@ void ws_on() {
         msg_back.SerializeToString(&buff_back);
         for (int uid : room->uids)  // 长度4
             ws.send(uid, buff_back);
-        // TO-DO  更新记录 数据库 room->record
         room->record.push(-1);
         std::string record = room->record.getBuffer();
         // TO-DO 将record保存
@@ -403,6 +410,9 @@ void ws_on() {
 
     // 匹配放弃
     ws.on("playerCancel", _WSONCB_{
+        WS::HDLInfo * info = ws.getInfoByHdl(hdl);
+        if (info == NULL)
+            return;
         if (!roomManager.getOutRoom(ws.getInfoByHdl(hdl)->uid))
             return;
         Msg msg_back;
