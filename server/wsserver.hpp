@@ -17,6 +17,7 @@
 #include <set>
 #include <map>
 #include "msg.pb.h"
+#include "game.hpp"
 #include "timer.h"
 
 typedef websocketpp::server<websocketpp::config::asio> server;
@@ -104,6 +105,7 @@ public:
         mep.set_close_handler([this](HDL hdl) {
             auto iter = hdl2info.find(hdl);
             if (iter != hdl2info.cend()) {
+                roomManager.getOutRoom(iter->second->uid);  // 1 在断开时检查退出房间
                 iter->second->tmo = 15000;
                 rll.insert(iter->second);
                 timerOn();  // 启动计时器
@@ -186,12 +188,13 @@ public:
         return 0;
     }
     /**
-     * hdl信息移除掉，返回被移除的uid
+     * hdl信息移除掉
      * 未有相关信息 返回0
      */
     bool removeHDL(HDL hdl) {
         auto iter = hdl2info.find(hdl);
         if (iter != hdl2info.cend()) {
+            roomManager.getOutRoom(iter->second->uid);  // 2 在移除时检查退出房间
             uid2hdl.erase(iter->second->uid);
             hdl2info.erase(iter);
             delete iter->second;

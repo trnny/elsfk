@@ -7,11 +7,13 @@
  * 给ws注册事件，用于处理消息
  */
 
+#include <time.h>
 #include <sys/time.h>
 #include "wsserver.hpp"
 #include "mysql/mysqlfuuu.hpp"
+#include "redis/redisfuuu.hpp"
 #include "game.hpp"
-
+#include "timer.h"
 
 Msg_VType makepbv(const std::vector<int>& o) {
     Msg_VType v;
@@ -121,8 +123,13 @@ std::vector<std::vector<std::string>> tab;
  * 新加入一个用户
  */
 int new_user(const std::string& un, const std::string& pw) {
-    // TO-DO 从redis读取ucount、max_uid
-    static int ucount = 2, max_uid = 10084;
+    static int ucount, max_uid = 0;
+    if (max_uid == 0) {
+        if (!redis.getValue("intUserCount", ucount) || !redis.getValue("intMaxUid", max_uid)) {
+            std::cerr << "[ERROR] : 创建新用户时读取redis失败" << std::endl;
+            return 0;
+        }
+    }
     int retry = 6, u_id;
     while (-- retry) {
         u_id = rand() % 100 + ucount + 10000;
@@ -144,7 +151,9 @@ int new_user(const std::string& un, const std::string& pw) {
     }
     else    // 使用max_uid后一个
         u_id = ++ max_uid;
-    // TO-DO 更新redis
+    if (!redis.setValue("intUserCount", ucount) || !redis.setValue("intMaxUid", max_uid)) {
+        std::cerr << "[ERROR] : 创建新用户时写入redis失败" << std::endl;    // 新的id已生成但是写入redis失败
+    }
     return u_id;
 }
 
@@ -152,19 +161,23 @@ int new_user(const std::string& un, const std::string& pw) {
  * 获取时间戳 ms
  */
 uint64_t get_ms() {
-    struct timeval tv;
-    struct timezone tz;
-    gettimeofday(&tv, &tz);
-    return tv.tv_usec / 1000;
+    struct timespec ts;
+    clock_gettime(CLOCK_BOOTTIME_ALARM, &ts);
+    return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
 // 给ws注册事件
 void ws_on() {
 
+    // setInterval([]{
+    //     std::cout << get_ms() << std::endl;
+    // }, 5000);
+
     /**
      * 告知所有人 匹配成功 等待大家点确定
+     * uids 4
      */
-    roomManager.onMatch = [&](GameRoom* room) {
+    roomManager.onMatch = [](GameRoom* room) {
         Msg msg_back;
         auto data_back = msg_back.mutable_data();
         msg_back.set_desc("matchingSucceed");
@@ -177,8 +190,9 @@ void ws_on() {
 
     /**
      * 告知所有人 有人没点确定 取消匹配
+     * uids 4
      */
-    roomManager.onCancel = [&](GameRoom* room) {
+    roomManager.onCancel = [](GameRoom* room) {
         Msg msg_back;
         msg_back.set_desc("matchingCancel");
         std::string buff_back;
@@ -189,12 +203,14 @@ void ws_on() {
 
     /**
      * 告知所有人 大家都点了确定 游戏开始了
+     * uids 4 -> 5
      */
-    roomManager.onPlay = [&](GameRoom* room) {
+    roomManager.onPlay = [](GameRoom* room) {
         std::vector<char> nxn;   // 用于记录
         std::vector<int> unn;    // 发往客户端
+        std::string ustr;   // 记录数据库
         unsigned char now, next, mix;
-        room->lastTime = room->startTime = get_ms();
+        room->lastTime = get_ms();
         for (int uid : room->uids) {
             now = rand() % 16;
             next = rand() % 16;
@@ -204,6 +220,7 @@ void ws_on() {
             unn.push_back(now);
             unn.push_back(next);
             nxn.push_back(mix);
+            ustr += ", " + std::to_string(uid);
         }
         for (char c : nxn) {    // 记录四个mix  mix由now和next组成
             room->record.push(c);
@@ -216,21 +233,24 @@ void ws_on() {
         msg_back.SerializeToString(&buff_back);
         for (int uid : room->uids)  // 长度4
             ws.send(uid, buff_back);
-        // 启动定时器 检查房间是否断线
-        room->uids.push_back(setInterval([&]{
-            if (get_ms() - room->lastTime > 9999) {
-                if (roomManager.onOver) // 理论上这是true
-                    roomManager.onOver(room);
+        room->uids.push_back(setInterval([room]{
+            if (get_ms() - room->lastTime > 11999) {
+                std::vector<int> over;
+                over.insert(over.begin(), room->uids.begin(), room->uids.begin() + 4);
+                for (int uid : over)
+                    roomManager.gameOver(uid);
             }
         }, 3000));
-        // TO-DO 更新记录 数据库
+        if(sql.query("insert into elsfk_game_4 (g_level, u_id1, u_id2, u_id3, u_id4) values (0" + ustr + ")") && sql.query("select @@IDENTITY") && sql.result(tab)) {
+            room->record.id = tab[0][0];
+        }
     };
 
     /**
      * 告知所有人  大家都阵亡了 游戏结束了
+     * uids n -> 4
      */
-    roomManager.onOver = [&](GameRoom* room) {
-        // 关闭定时器  使room->uids长度4
+    roomManager.onOver = [](GameRoom* room) {
         clearInterval(room->uids[4]);
         room->uids.resize(4);
         Msg msg_back;
@@ -243,8 +263,7 @@ void ws_on() {
         for (int uid : room->uids)  // 长度4
             ws.send(uid, buff_back);
         room->record.push(-1);
-        std::string record = room->record.getBuffer();
-        // TO-DO 将record保存
+        redis.setMapByField("hashGameRecords", room->record.id, room->record.getBuffer());
     };
 
     // signup  注册
@@ -380,7 +399,10 @@ void ws_on() {
     
     // 匹配请求
     ws.on("matching", _WSONCB_{
-        if (!roomManager.getIntoRoom(ws.getInfoByHdl(hdl)->uid))
+        auto info = ws.getInfoByHdl(hdl);
+        if (info == NULL)
+            return;
+        if (!roomManager.getIntoRoom(info->uid))
             return;
         Msg msg_back;
         auto data_back = msg_back.mutable_data();
@@ -393,7 +415,10 @@ void ws_on() {
 
     // 匹配确认
     ws.on("matchingSure", _WSONCB_{
-        int uid = ws.getInfoByHdl(hdl)->uid;
+        auto info = ws.getInfoByHdl(hdl);
+        if (info == NULL)
+            return;
+        int uid = info->uid;
         if (!roomManager.confirmEntry(uid))
             return;
         Msg msg_back;
@@ -410,10 +435,10 @@ void ws_on() {
 
     // 匹配放弃
     ws.on("playerCancel", _WSONCB_{
-        WS::HDLInfo * info = ws.getInfoByHdl(hdl);
+        auto info = ws.getInfoByHdl(hdl);
         if (info == NULL)
             return;
-        if (!roomManager.getOutRoom(ws.getInfoByHdl(hdl)->uid))
+        if (!roomManager.getOutRoom(info->uid))
             return;
         Msg msg_back;
         auto data_back = msg_back.mutable_data();
@@ -426,8 +451,11 @@ void ws_on() {
 
     // 特殊
     ws.on("newDropping", _WSONCB_{
+        auto info = ws.getInfoByHdl(hdl);
+        if (info == NULL)
+            return;
+        int uid = info->uid;
         int next = rand() % 19;
-        int uid = ws.getInfoByHdl(hdl)->uid;
         GameRoom* room = roomManager.getRoomById(uid);
         if (room == NULL || room->status != GameRoom::playing)
             return;
@@ -449,8 +477,44 @@ void ws_on() {
         for (int i = 0; i < 4; i++) 
             ws.send(room->uids[i], buff_back);
     });
+    ws.on("droppingChanged", _WSONCB_{
+        auto info = ws.getInfoByHdl(hdl);
+        if (info == NULL)
+            return;
+        int dropping;
+        CITER iter;
+        iter = data.find("dropping");
+        if (iter == data.cend())
+            return;
+        if (!getpbo(iter->second, dropping))
+            return;
+        int uid = info->uid;
+        GameRoom* room = roomManager.getRoomById(uid);
+        if (room == NULL || room->status != GameRoom::playing)
+            return;
+        // 记录
+        uint64_t now = get_ms();
+        room->record.push((char)(room->id2idx[uid]));
+        room->record.push((char)(dropping + 21));
+        room->record.push((int16_t)(now - room->lastTime));
+        room->lastTime = now;
+        // 记录完成
+        Msg msg_back;
+        auto data_back = msg_back.mutable_data();
+        msg_back.set_desc("droppingChanged");
+        data_back->insert(mp("ok", makepbv(true)));
+        data_back->insert(mp("uid", makepbv(uid)));
+        data_back->insert(mp("dropping", makepbv(dropping)));
+        std::string buff_back;
+        msg_back.SerializeToString(&buff_back);
+        for (int i = 0; i < 4; i++) 
+            ws.send(room->uids[i], buff_back);
+    });
     // 变长
     ws.on("reduce", _WSONCB_{
+        auto info = ws.getInfoByHdl(hdl);
+        if (info == NULL)
+            return;
         std::vector<int> reduce;
         CITER iter;
         iter = data.find("reduce");
@@ -458,7 +522,7 @@ void ws_on() {
             return;
         if (!getpbo(iter->second, reduce))
             return;
-        int uid = ws.getInfoByHdl(hdl)->uid;
+        int uid = info->uid;
         GameRoom* room = roomManager.getRoomById(uid);
         if (room == NULL || room->status != GameRoom::playing)
             return;
@@ -484,6 +548,9 @@ void ws_on() {
     });
     // 定长4
     ws.on("posChanged", _WSONCB_{
+        auto info = ws.getInfoByHdl(hdl);
+        if (info == NULL)
+            return;
         int pos;
         CITER iter;
         iter = data.find("pos");
@@ -491,7 +558,7 @@ void ws_on() {
             return;
         if (!getpbo(iter->second, pos))
             return;
-        int uid = ws.getInfoByHdl(hdl)->uid;
+        int uid = info->uid;
         GameRoom* room = roomManager.getRoomById(uid);
         if (room == NULL || room->status != GameRoom::playing)
             return;
@@ -516,7 +583,10 @@ void ws_on() {
     });
     // 定长0
     ws.on("gameOver", _WSONCB_{
-        int uid = ws.getInfoByHdl(hdl)->uid;
+        auto info = ws.getInfoByHdl(hdl);
+        if (info == NULL)
+            return;
+        int uid = info->uid;
         GameRoom* room = roomManager.gameOver(uid);
         if (room == NULL)   // 最后一个结束的人不会收到自己结束 会收到整个游戏结束
             return;
@@ -536,6 +606,60 @@ void ws_on() {
         msg_back.SerializeToString(&buff_back);
         for (int i = 0; i < 4; i++) 
             ws.send(room->uids[i], buff_back);
+    });
+
+    /**
+     * 获取记录列表
+     */
+    ws.on("recordList", _WSONCB_{
+        auto info = ws.getInfoByHdl(hdl);
+        if (info == NULL)
+            return;
+        int uid = info->uid;
+        Msg msg_back;
+        auto data_back = msg_back.mutable_data();
+        msg_back.set_desc("recordList");
+        if (sql.query("select rec_no,rec_time_start,u_id1,u_id2,u_id3,u_id4 from elsfk_game_4 where u_id1=" + std::to_string(uid) + " or u_id2=" + std::to_string(uid) + " or u_id3=" + std::to_string(uid) + " or u_id4=" + std::to_string(uid)) && sql.result(tab)){
+            data_back->insert(mp("ok", makepbv(true)));
+            data_back->insert(mp("ids", makepbv(tab[0])));
+            data_back->insert(mp("dates", makepbv(tab[1])));
+            data_back->insert(mp("uid1s", makepbv(tab[2])));
+            data_back->insert(mp("uid2s", makepbv(tab[3])));
+            data_back->insert(mp("uid3s", makepbv(tab[4])));
+            data_back->insert(mp("uid4s", makepbv(tab[5])));
+        }else{
+            data_back->insert(mp("ok", makepbv(false)));
+            data_back->insert(mp("msg", makepbv("服务器繁忙!")));
+        }
+        std::string buff_back;
+        msg_back.SerializeToString(&buff_back);
+        ws.send(hdl, buff_back);
+    });
+
+    /**
+     * 获取某条记录
+     */
+    ws.on("recordGet", _WSONCB_{
+        auto info = ws.getInfoByHdl(hdl);
+        if (info == NULL)
+            return;
+        string recordId;
+        CITER iter;
+        iter = data.find("recordId");
+        if (iter == data.cend())
+            return;
+        if (!getpbo(iter->second, recordId))
+            return;
+        string record;
+        redis.getMapValueByField("hashGameRecords", recordId, record);
+        Msg msg_back;
+        auto data_back = msg_back.mutable_data();
+        msg_back.set_desc("recordGet");
+        data_back->insert(mp("ok", makepbv(true)));
+        data_back->insert(mp("record", makepbv(record)));
+        std::string buff_back;
+        msg_back.SerializeToString(&buff_back);
+        ws.send(hdl, buff_back);
     });
 };
 

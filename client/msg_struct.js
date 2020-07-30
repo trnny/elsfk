@@ -43,7 +43,17 @@ posChanged: {
     pos  // int: y*256+x
 }
 
+droppingChanged: {
+    dropping  // int
+}
+
 gameOver: {
+}
+
+recordList: {
+}
+recordGet: {
+    recordId // string
 }
 
 
@@ -101,4 +111,55 @@ posChanged: {
     ok
     uid
     pos  // int: y*256+x
+}
+
+droppingChanged: {
+    ok
+    uid
+    dropping  // int:
+}
+
+recordList: {
+    ok
+    ids // string[] 记录标号的数组 长度为记录条数
+    dates // string[] 日期数组
+    uid1s // string[]
+    uid2s
+    uid3s
+    uid4s
+}
+recordGet: {
+    ok
+    record // bin  长度为0表示没有该记录
+}
+
+
+// record
+
+gameOver : {
+    uid
+}
+
+gameStart: {
+    unn
+}
+
+newDropping: {
+    uid
+    next
+}
+
+reduce: {
+    uid 
+    reduce
+}
+
+posChanged: {
+    uid
+    pos
+}
+
+droppingChanged: {
+    uid
+    dropping
 }

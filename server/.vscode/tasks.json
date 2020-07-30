@@ -25,7 +25,9 @@
                 "-lboost_random",
                 "-lprotobuf",
                 "-lpthread",
-                "-lmysqlclient"
+                "-lmysqlclient",
+                "-lrt",
+                "-lhiredis"
             ],
             "group": {
                 "kind": "build",

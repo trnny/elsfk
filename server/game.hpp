@@ -28,6 +28,7 @@ class GameRecord {
      */
     std::string buffer;
 public:
+    std::string id;
     void push(int bytes) {
         static char b[4];
         *(int*)b = bytes;
@@ -57,8 +58,7 @@ struct GameRoom {
 public:
     std::vector<int> uids;       // idx 2 id  匹配和确认等
     std::map<int, int> id2idx;   // 通过id找idx
-    uint64_t startTime;  // 开始时间
-    uint64_t lastTime;   // 上次时间
+    uint64_t lastTime = 0;   // 上次时间
     enum Status{
         matching,   // 还在匹配中
         waiting,    // 匹配上了 还在等确认
@@ -118,7 +118,7 @@ public:
                     room->status = GameRoom::waiting;
                     if (onMatch) 
                         onMatch(room);
-                    room->uids.push_back(setTimeout([&, room]{
+                    room->uids.push_back(setTimeout([this, room]{
                         room->uids.resize(4);
                         room->status = GameRoom::cancel;
                         if (onCancel) 
@@ -127,8 +127,8 @@ public:
                             rooms.erase(uid);
                         room->uids.clear();
                         room->id2idx.clear();
-                    }, 10000));
-                    return false;   // 最后加入的人不发送
+                    }, 15000));
+                    return false;   // 最后一人不发送
                 }
                 return true;
             }
@@ -180,6 +180,7 @@ public:
             if (onPlay)
                 onPlay(room);
             matching.erase(room);
+            return false;   // 最后一人不发送
         }
         return true;
     }
@@ -191,7 +192,7 @@ public:
         GameRoom* room = getRoomById(uid);
         if (room == NULL || room->status != GameRoom::playing) 
             return NULL;
-        for (size_t i = 4; i < room->uids.size(); i++) 
+        for (size_t i = 5; i < room->uids.size(); i++) 
             if (uid == room->uids[i])
                 return NULL;
         room->uids.push_back(uid);
@@ -202,7 +203,7 @@ public:
             for (int uid : room->uids)
                 rooms.erase(uid);
             delete room;
-            return NULL;
+            return NULL;    // 最后一人不发送
         }
         return room;
     }
