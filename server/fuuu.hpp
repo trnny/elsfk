@@ -117,6 +117,17 @@ bool getpbo(const Msg_VType& v, std::string& o) {
 }
 
 std::vector<std::vector<std::string>> tab;
+// // 显示查询结果
+// void pTable(const std::vector<std::vector<std::string>>& tab) {
+//     for (const auto& row : tab) {
+//         for (const auto& col : row) {
+//             std::cout << col << "    ";
+//         }
+//         std::cout << std::endl;
+//     }
+//     std::cout << std::endl;
+// }
+
 #define _WSONCB_ [](HDL hdl, const pb_map& data)
 
 /**
@@ -161,7 +172,7 @@ int new_user(const std::string& un, const std::string& pw) {
  * 获取时间戳 ms
  */
 uint64_t get_ms() {
-    struct timespec ts;
+    static struct timespec ts;
     clock_gettime(CLOCK_BOOTTIME_ALARM, &ts);
     return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
@@ -336,11 +347,23 @@ void ws_on() {
             tips = "服务器繁忙，请稍后再试!";
         }
         if(ok) {
-            // 登陆成功  获取rid，以便后面重连
+            HDL ohdl = ws.getHDLByUid(uid); // 被挤下线
+            if (ohdl.lock()) {
+                Msg temp_msg;
+                temp_msg.set_desc("crowd");
+                std::string temp_buff;
+                temp_msg.SerializeToString(&temp_buff);
+                ws.send(ohdl, temp_buff);
+            }
             data_back->insert(mp("rid", makepbv(ws.addHDLAndUid(uid, hdl))));
             if (!sql.query("insert into elsfk_login (u_id) values (" + std::to_string(uid) + " )")){
                 std::cout << "[WS WARNING] 用户[" << uid << "]登陆成功，但写入数据库失败!" << std::endl;
             }
+            GameRoom *room = roomManager.getRoomById(uid);
+            if (room) {
+                data_back->insert(mp("record", makepbv(room->record.getBuffer(), true)));
+            }
+            
         }
         data_back->insert(mp("ok", makepbv(ok)));
         data_back->insert(mp("msg", makepbv(tips)));
@@ -621,12 +644,23 @@ void ws_on() {
         msg_back.set_desc("recordList");
         if (sql.query("select rec_no,rec_time_start,u_id1,u_id2,u_id3,u_id4 from elsfk_game_4 where u_id1=" + std::to_string(uid) + " or u_id2=" + std::to_string(uid) + " or u_id3=" + std::to_string(uid) + " or u_id4=" + std::to_string(uid)) && sql.result(tab)){
             data_back->insert(mp("ok", makepbv(true)));
-            data_back->insert(mp("ids", makepbv(tab[0])));
-            data_back->insert(mp("dates", makepbv(tab[1])));
-            data_back->insert(mp("uid1s", makepbv(tab[2])));
-            data_back->insert(mp("uid2s", makepbv(tab[3])));
-            data_back->insert(mp("uid3s", makepbv(tab[4])));
-            data_back->insert(mp("uid4s", makepbv(tab[5])));
+            if (tab.size()) {
+                std::vector<std::string> ids, dates, uid1s, uid2s, uid3s, uid4s;
+                for (const auto& item : tab) {
+                    ids.push_back(item[0]);
+                    dates.push_back(item[1]);
+                    uid1s.push_back(item[2]);
+                    uid2s.push_back(item[3]);
+                    uid3s.push_back(item[4]);
+                    uid4s.push_back(item[5]);
+                }
+                data_back->insert(mp("ids", makepbv(ids)));
+                data_back->insert(mp("dates", makepbv(dates)));
+                data_back->insert(mp("uid1s", makepbv(uid1s)));
+                data_back->insert(mp("uid2s", makepbv(uid2s)));
+                data_back->insert(mp("uid3s", makepbv(uid3s)));
+                data_back->insert(mp("uid4s", makepbv(uid4s)));
+            }
         }else{
             data_back->insert(mp("ok", makepbv(false)));
             data_back->insert(mp("msg", makepbv("服务器繁忙!")));
@@ -656,7 +690,7 @@ void ws_on() {
         auto data_back = msg_back.mutable_data();
         msg_back.set_desc("recordGet");
         data_back->insert(mp("ok", makepbv(true)));
-        data_back->insert(mp("record", makepbv(record)));
+        data_back->insert(mp("record", makepbv(record, true))); // 以二进制发送
         std::string buff_back;
         msg_back.SerializeToString(&buff_back);
         ws.send(hdl, buff_back);

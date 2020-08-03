@@ -75,7 +75,7 @@ private:
                     info->tmo -= 1000;
             for (HDLInfo* info : toDel) {
                 rll.erase(info);
-                removeHDL(uid2hdl[info->uid]);
+                delete info;
             }
             if (rll.empty()) {
                 clearInterval(timerId);
@@ -108,6 +108,8 @@ public:
                 roomManager.getOutRoom(iter->second->uid);  // 1 在断开时检查退出房间
                 iter->second->tmo = 15000;
                 rll.insert(iter->second);
+                uid2hdl.erase(iter->second->uid);
+                hdl2info.erase(iter);
                 timerOn();  // 启动计时器
             }
         });
@@ -167,9 +169,9 @@ public:
      * 需要先判断.lock()是否为null
      */
     HDL getHDLByUid(int uid) {
-        HDL hdl_null;   // .lock()是个null
         auto iter = uid2hdl.find(uid);
         if (iter == uid2hdl.cend()) {
+            HDL hdl_null;
             return hdl_null;
         }
         return iter->second;
@@ -179,13 +181,10 @@ public:
      * 返回随机的认证码
      */
     int addHDLAndUid(int uid, HDL hdl) {
-        if (uid && hdl.lock()) {
-            int rid = rand();
-            hdl2info[hdl] = new HDLInfo(uid, rid);
-            uid2hdl[uid] = hdl;
-            return rid;
-        }
-        return 0;
+        int rid = rand();
+        hdl2info[hdl] = new HDLInfo(uid, rid);
+        uid2hdl[uid] = hdl;
+        return rid;
     }
     /**
      * hdl信息移除掉
@@ -208,16 +207,20 @@ public:
      * 返回更新是否成功
      */
     bool updateHDL(HDL hdl, int uid, int rid) {
-        auto iter = uid2hdl.find(uid);
-        if (iter == uid2hdl.cend())
-            return false;   // 未找到该重连信息
-        HDL oldHdl = iter->second;
-        HDLInfo* info = hdl2info[oldHdl];
-        if (info->rid != rid)
-            return false;   // 认证不通过
-        info->tmo = 0;
+        if (getInfoByHdl(hdl)) return false;    // 正常状态不能重连
+        // 找到重连信息
+        WS::HDLInfo * info = NULL;
+        for (auto i : rll) {
+            if (i->uid == uid) {
+                if (i->rid == rid) {
+                    info = i;
+                    break;
+                }
+            }
+        }
+        if (!info) return false;
         rll.erase(info);
-        hdl2info.erase(oldHdl); // 删除旧的
+        info->tmo = 0;
         hdl2info[hdl] = info;
         uid2hdl[uid] = hdl;
         return true;
