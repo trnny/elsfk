@@ -478,7 +478,8 @@ void ws_on() {
         if (info == NULL)
             return;
         int uid = info->uid;
-        int next = rand() % 19;
+        int next = rand() % 20;
+        next == 19 && (next = 2);   // 将长条概率提高一些
         GameRoom* room = roomManager.getRoomById(uid);
         if (room == NULL || room->status != GameRoom::playing)
             return;
