@@ -696,6 +696,37 @@ void ws_on() {
         msg_back.SerializeToString(&buff_back);
         ws.send(hdl, buff_back);
     });
+
+    ws.on("score", _WSONCB_{
+        auto info = ws.getInfoByHdl(hdl);
+        if (info == NULL)
+            return;
+        int score, uid = info->uid;
+        CITER iter;
+        iter = data.find("score");
+        if (iter == data.cend())
+            return;
+        if (!getpbo(iter->second, score))
+            return;
+        char itoa[8];
+        *(int*)itoa = uid;
+        *(int*)(itoa+4) = score;
+        string mix(itoa, 8);
+        redis.appendString("strGameScores", mix);
+    });
+
+    ws.on("rank", _WSONCB_{
+        Msg msg_back;
+        msg_back.set_desc("rank");
+        string rank;
+        if(redis.getString("strGameScores", rank)) {
+            auto data_back = msg_back.mutable_data();
+            data_back->insert(mp("rank", makepbv(rank, true)));
+        }
+        std::string buff_back;
+        msg_back.SerializeToString(&buff_back);
+        ws.send(hdl, buff_back);
+    });
 };
 
 

@@ -56,6 +56,14 @@ recordGet: {
     recordId // string
 }
 
+score: {
+    score   // int
+}
+
+rank: {
+
+}
+
 
 // =========== 接收 ===========
 
@@ -134,7 +142,11 @@ recordGet: {
 }
 
 crowd: {
-    
+}
+
+rank: {
+    uids    // int[]
+    scores  // int[]
 }
 
 

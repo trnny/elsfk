@@ -69,6 +69,22 @@ public:
         freeReplyObject(r);
         return false; 
     }
+    bool appendString(const string& key, const string& value) {
+        if (!ok) return false;
+        r = (redisReply*)redisCommand(c, "append %s %b", key.c_str(), value.c_str(), value.size());
+        if (NULL == r) {
+            cerr << "[REDIS ERROR]: " << c->errstr << endl;
+            ok = !redisReconnect(c);  // 重连
+            return appendString(key, value);
+        }
+        if (r->type == REDIS_REPLY_INTEGER) {
+            freeReplyObject(r);
+            return true;
+        }
+        cerr << "[REDIS APPEND ERROR]: " << r->str << endl;
+        freeReplyObject(r);
+        return false; 
+    }
     /**
      * 返回表示是否操作成功
      * 键不存在时返回值为true 但value为空
@@ -87,6 +103,10 @@ public:
                 value[i] = r->str[i];
             freeReplyObject(r);
             return true;
+        }
+        if (r->type == REDIS_REPLY_NIL) {
+            freeReplyObject(r);
+            return false;
         }
         cerr << "[REDIS GET ERROR]: " << r->str << endl;
         freeReplyObject(r);
@@ -151,6 +171,10 @@ public:
             freeReplyObject(r);
             return true;
         }
+        if (r->type == REDIS_REPLY_NIL) {
+            freeReplyObject(r);
+            return false;
+        }
         cerr << "[REDIS ERROR]: " << r->str << endl;
         freeReplyObject(r);
         return false;
@@ -177,11 +201,19 @@ public:
                 if (element_value->type == REDIS_REPLY_STRING) {
                     iter.second.resize(element_value->len);
                     for (size_t i = 0; i < element_value->len; i++)
-                    iter.second[i] = element_value->str[i];
+                        iter.second[i] = element_value->str[i];
+                }
+                if (element_value->type == REDIS_REPLY_NIL) {
+                    iter.second = "";
+                    return false;
                 }
             }
             freeReplyObject(r);
             return true;
+        }
+        if (r->type == REDIS_REPLY_NIL) {
+            freeReplyObject(r);
+            return false;
         }
         cerr << "[REDIS ERROR]: " << r->str << endl;
         freeReplyObject(r);
@@ -205,6 +237,10 @@ public:
             freeReplyObject(r);
             return true;
         }
+        if (r->type == REDIS_REPLY_NIL) {
+            freeReplyObject(r);
+            return false;
+        }
         cerr << "[REDIS ERROR]: " << r->str << endl;
         freeReplyObject(r);
         return false;
@@ -215,7 +251,8 @@ public:
         if (r->type == REDIS_REPLY_NIL) {
             freeReplyObject(r);
             return false;
-        } else if (r->type == REDIS_REPLY_STRING) {
+        }
+        if (r->type == REDIS_REPLY_STRING) {
             value = atoi(r->str);
             freeReplyObject(r);
             return true;
