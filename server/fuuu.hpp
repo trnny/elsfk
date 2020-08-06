@@ -491,8 +491,7 @@ void ws_on() {
         if (info == NULL)
             return;
         int uid = info->uid;
-        int next = rand() % 20;     // 算法不公平  更换算法
-        next == 19 && (next = 2);   // 将长条概率提高一些
+        int next = new_drop();  // 新的生成方法 T型块概率降低
         GameRoom* room = roomManager.getRoomById(uid);
         if (room == NULL || room->status != GameRoom::playing)
             return;
