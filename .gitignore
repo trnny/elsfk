@@ -14,4 +14,11 @@ server/mysql/function_test/test_timer.cpp
 server/mysql/function_test/test_timer
 server/msg.pb.o
 本周工作报告0724.doc
-.gitignore
+server/redis/test/test.cpp
+server/redis/test/.vscode/launch.json
+server/redis/test/.vscode/settings.json
+server/redis/test/.vscode/tasks.json
+server/redis/test/test
+server/redis/key_and_value.txt
+client/bin.txt
+本周工作报告0801.doc

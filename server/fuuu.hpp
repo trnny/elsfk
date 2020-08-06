@@ -169,6 +169,18 @@ int new_user(const std::string& un, const std::string& pw) {
 }
 
 /**
+ * 获得一个新的块
+ */
+int new_drop() {
+    int i = rand() % 32;
+    if (i <= 18) return i;
+    if (i >= 30) return i - 30;
+    i -= 19;
+    if (i <= 6) return i;
+    return i + 8;
+}
+
+/**
  * 获取时间戳 ms
  */
 uint64_t get_ms() {
@@ -354,13 +366,14 @@ void ws_on() {
                 std::string temp_buff;
                 temp_msg.SerializeToString(&temp_buff);
                 ws.send(ohdl, temp_buff);
+                roomManager.getOutRoom(uid);    // 防止被顶的人正在匹配
             }
             data_back->insert(mp("rid", makepbv(ws.addHDLAndUid(uid, hdl))));
             if (!sql.query("insert into elsfk_login (u_id) values (" + std::to_string(uid) + " )")){
                 std::cout << "[WS WARNING] 用户[" << uid << "]登陆成功，但写入数据库失败!" << std::endl;
             }
             GameRoom *room = roomManager.getRoomById(uid);
-            if (room) {
+            if (room && room->status == GameRoom::playing) {
                 data_back->insert(mp("record", makepbv(room->record.getBuffer(), true)));
             }
             
@@ -478,7 +491,7 @@ void ws_on() {
         if (info == NULL)
             return;
         int uid = info->uid;
-        int next = rand() % 20;
+        int next = rand() % 20;     // 算法不公平  更换算法
         next == 19 && (next = 2);   // 将长条概率提高一些
         GameRoom* room = roomManager.getRoomById(uid);
         if (room == NULL || room->status != GameRoom::playing)
