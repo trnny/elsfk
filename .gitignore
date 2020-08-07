@@ -18,3 +18,4 @@ server/msg.pb.o
 server/server
 server/server.o
 server/timer.o
+server/.sconsign.dblite
