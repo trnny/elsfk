@@ -132,7 +132,7 @@ public:
      * 向uid发送
      */
     void send(int uid, const std::string& s) {
-        mep.send(getHDLByUid(uid), s, websocketpp::frame::opcode::binary);
+        send(getHDLByUid(uid), s);
     }
     /**
      * 指定的端口启动
@@ -174,10 +174,10 @@ public:
      * 可以用于向指定用户发送消息
      * 需要先判断.lock()是否为null
      */
-    HDL getHDLByUid(int uid) {
+    HDL getHDLByUid(int uid) const{
+        static HDL hdl_null;
         auto iter = uid2hdl.find(uid);
         if (iter == uid2hdl.cend()) {
-            HDL hdl_null;
             return hdl_null;
         }
         return iter->second;
