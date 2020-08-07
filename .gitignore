@@ -14,3 +14,7 @@ server/mysql/test/main.cpp
 server/mysql/test/main
 本周工作报告0801.doc
 本周工作报告0724.doc
+server/msg.pb.o
+server/server
+server/server.o
+server/timer.o

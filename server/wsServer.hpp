@@ -64,6 +64,9 @@ private:
     std::map<int, HDL> uid2hdl;                     // 通过uid找到hdl
     std::set<HDLInfo*> rll;                         // 重连队列 应该用list
     int timerId = 0;    // 定时检查重连队列的定时器  重连队列空的时候不检查
+    /**
+     * 定时器启动
+     */
     void timerOn() {
         if (timerId) return;
         timerId = setInterval([&]{
@@ -114,6 +117,9 @@ public:
             }
         });
     }
+    ~WS() {
+        mep.stop();
+    }
     /**
      * 发送二进制消息
      * 目前，应该是发送pb序列化结果
@@ -132,6 +138,7 @@ public:
      * 指定的端口启动
      */
     void run(uint16_t port = 8000) {
+        mep.set_reuse_addr(true);
         mep.listen(port);
         mep.start_accept();
         mep.run();
