@@ -1,11 +1,14 @@
 #include <iostream>
 #include <unistd.h>
 #include "timer.h"
-#include "fuuu.hpp"
+#include "wsHandle.hpp"
 
 using std::cout;
 using std::endl;
 
+/**
+ * 测试定时器效果
+ */
 void timerTest() {
     int count = 0;
     int it = setInterval([&]{
@@ -31,9 +34,12 @@ void timerTest() {
         sleep(0);
 }
 
-
 int main() {
+    // timerTest();
     srand((int)time(0));
+    setInterval([]{
+        srand((int)time(0) + rand());
+    }, 1000 * 60 * 5);  // 每5分钟更新一下种子
     ws_on();
     ws.run();
 }

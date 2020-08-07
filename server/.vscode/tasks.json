@@ -7,9 +7,8 @@
             "command": "g++",
             "args": [
                 "-g",
-                "test.cpp",
-                "msg.pb.cc",
-                "timer.cpp",
+                "*.cpp",
+                "*.cc",
                 "-o",
                 "${workspaceFolder}/test",
                 "-I.",

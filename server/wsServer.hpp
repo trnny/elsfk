@@ -60,10 +60,10 @@ private:
         }
     };
 
-    std::map<HDL, HDLInfo*, cmp_hdl> hdl2info;
-    std::map<int, HDL> uid2hdl;
-    std::set<HDLInfo*> rll;
-    int timerId = 0;
+    std::map<HDL, HDLInfo*, cmp_hdl> hdl2info;      // 通过hdl访问用户的信息
+    std::map<int, HDL> uid2hdl;                     // 通过uid找到hdl
+    std::set<HDLInfo*> rll;                         // 重连队列 应该用list
+    int timerId = 0;    // 定时检查重连队列的定时器  重连队列空的时候不检查
     void timerOn() {
         if (timerId) return;
         timerId = setInterval([&]{
@@ -93,7 +93,7 @@ public:
             if(msg_ptr->get_opcode() == websocketpp::frame::opcode::binary) {
                 Msg msg;
                 if (msg.ParseFromString(msg_ptr->get_payload())) {
-                    emit(msg.desc(), hdl, msg.data());
+                    emit(msg.desc(), hdl, msg.data());      // 将消息分发到对应的handler
                 }
                 else
                     std::cout << "[MSG PARSE ERROR]" << std::endl;
@@ -119,15 +119,14 @@ public:
      * 目前，应该是发送pb序列化结果
      */
     void send(HDL hdl, const std::string& s) {
-        mep.send(hdl, s, websocketpp::frame::opcode::binary);
+        if (hdl.lock())
+            mep.send(hdl, s, websocketpp::frame::opcode::binary);
     }
     /**
      * 向uid发送
      */
     void send(int uid, const std::string& s) {
-        HDL hdl = getHDLByUid(uid);
-        if (hdl.lock())
-            mep.send(hdl, s, websocketpp::frame::opcode::binary);
+        mep.send(getHDLByUid(uid), s, websocketpp::frame::opcode::binary);
     }
     /**
      * 指定的端口启动

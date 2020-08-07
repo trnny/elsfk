@@ -30,13 +30,13 @@ using std::list;
 using std::map;
 using std::set;
 
-class MyRedis {
+class Redis {
     redisContext* c = NULL;
     bool ok = true;
     redisReply* r = NULL;
 
 public:
-    MyRedis() {
+    Redis() {
         c = redisConnect("127.0.0.1", 6379);
         if (c->err) {
             cerr << "[REDIS ERROR]: 连接到redis失败! " << c->errstr << endl;
@@ -45,13 +45,14 @@ public:
             return;
         }
 
-        ok = simple_OK_Cmd("select 1");
-        // setInterval([&]{
-            
-        // }, 10*60*1000);
+        ok = simpleOKCmd("select 1");
+    }
+    ~Redis() {
+        redisFree(c);
     }
     /**
-     * string类型值存储
+     * string存储
+     * 可以是二进制 
      */
     bool setString(const string& key, const string& value) {
         if (!ok) return false;
@@ -69,6 +70,10 @@ public:
         freeReplyObject(r);
         return false; 
     }
+    /**
+     * string追加
+     * 可以是二进制
+     */
     bool appendString(const string& key, const string& value) {
         if (!ok) return false;
         r = (redisReply*)redisCommand(c, "append %s %b", key.c_str(), value.c_str(), value.size());
@@ -86,8 +91,8 @@ public:
         return false; 
     }
     /**
-     * 返回表示是否操作成功
-     * 键不存在时返回值为true 但value为空
+     * 读串
+     * 只有读成功才返回true
      */
     bool getString(const string& key, string& value) {
         if (!ok) return false;
@@ -119,18 +124,22 @@ public:
     bool setMap(const string& key, const map<string, string>& value) {
         if (!ok || value.empty()) return false;
         string cmd = "hmset " + key;
+        bool skip = true;
         for (const auto & i : value) {
             if (i.second.find_first_of(" \t\r\n\0", 0, 5) != string::npos) {
                 if (!setMapByField(key, i.first, i.second))
                     return false;
             }
-            else
+            else{
+                skip = false;
                 cmd += " " + i.first + " " + i.second;
+            }
         }
-        return simple_OK_Cmd(cmd);
+        return skip || simpleOKCmd(cmd);      // 对于不包含特殊字符的value 直接执行简单okcmd
     }
     /**
      * 置表某字段
+     * 可以是二进制
      */
     bool setMapByField(const string& key, const string& field, const string& value) {
         if (!ok) return false;
@@ -181,6 +190,7 @@ public:
     }
     /**
      * 获取部分键的值
+     * 表中不存在的字段值为空字符串
      */
     bool getMapByFields(const string& key, map<string, string>& value) {
         if (!ok || value.empty()) return false;
@@ -205,7 +215,6 @@ public:
                 }
                 if (element_value->type == REDIS_REPLY_NIL) {
                     iter.second = "";
-                    return false;
                 }
             }
             freeReplyObject(r);
@@ -220,7 +229,7 @@ public:
         return false;
     }
     /**
-     * 单个字段的值
+     * 读表某个字段的值
      */
     bool getMapValueByField(const string& key, const string& field, string& value) {
         if (!ok) return false;
@@ -245,6 +254,9 @@ public:
         freeReplyObject(r);
         return false;
     }
+    /**
+     * 读取int
+     */
     bool getValue(const string& key, int& value) {
         if (!ok) return false;
         r = (redisReply*)redisCommand(c, "get %s", key.c_str());
@@ -261,21 +273,24 @@ public:
         freeReplyObject(r);
         return false;
     }
+    /**
+     * 存int
+     */
     bool setValue(const string& key, int value) {
         if (!ok) return false;
         string cmd = "set " + key + " " + std::to_string(value);
-        return simple_OK_Cmd(cmd);
+        return simpleOKCmd(cmd);
     }
     /** 
      * 执行简单返回为OK的指令
      */
-    bool simple_OK_Cmd(const string& cmd) {
+    bool simpleOKCmd(const string& cmd) {
         if (!ok) return false;
         r = (redisReply*)redisCommand(c, cmd.c_str());
         if (NULL == r) {
             cerr << "[REDIS ERROR]: " << c->errstr << endl;
             ok = !redisReconnect(c);  // 重连
-            return simple_OK_Cmd(cmd);
+            return simpleOKCmd(cmd);
         }
         if (r->type == REDIS_REPLY_STATUS && strcasecmp(r->str, "OK") == 0) {
             freeReplyObject(r);
@@ -287,16 +302,18 @@ public:
     }
 
     /**
-     * 简单的指令  不能判断成功
+     * 简单的指令  不能判断成功  不能获得结果
      */
-    void simple_Cmd(const string& cmd) {
+    void simpleCmd(const string& cmd) {
         if (!ok) return;
         r = (redisReply*)redisCommand(c, cmd.c_str());
         if (NULL == r) {
             cerr << "[REDIS ERROR]: " << c->errstr << endl;
             ok = !redisReconnect(c);  // 重连
-            simple_Cmd(cmd);
+            simpleCmd(cmd);
         }
+        // 不对r进行任何判断
+        freeReplyObject(r);
     }
 }redis;
 

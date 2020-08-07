@@ -63,8 +63,8 @@ public:
         matching,   // 还在匹配中
         waiting,    // 匹配上了 还在等确认
         cancel,     // 时间到了 有人没确认 取消等下一批人匹配
-        playing,    // 
-        over
+        playing,    // 正在游戏中
+        over        // 对局结束 房间即将销毁
     } status;       // 房间的状态
     GameRecord record;  // 房间的对战记录
 };

@@ -20,6 +20,7 @@
 
 class SimpleLock{
     bool islock = false;
+public:
     void wait() {
         while (islock);
         islock = true;
@@ -29,13 +30,13 @@ class SimpleLock{
     }
 }lock;
 
-class MyMysql {
+class Mysql {
     bool ok = false;
     MYSQL* conn = NULL;
     MYSQL_RES * res = NULL;
     MYSQL_ROW row = NULL;
 public:
-    MyMysql() {
+    Mysql() {
         conn = mysql_init(NULL);
         if (NULL == conn || NULL == mysql_real_connect(conn, "127.0.0.1", "root", "0414tu..", "ELSFK", 3306, NULL, 0)) {
             _PRMYSQLERR_
@@ -43,7 +44,7 @@ public:
         }
         ok = true;
     }
-    ~MyMysql() {
+    ~Mysql() {
         if (ok)
             mysql_close(conn);
     }

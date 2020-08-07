@@ -5,16 +5,21 @@
  * 该文件: 
  * 解析消息
  * 给ws注册事件，用于处理消息
+ * 接收的消息  ==>  发送出消息
+ * 在用户登录的状态下 是通过hdl来区分各用户 消息不需要附带上uid
  */
 
 #include <time.h>
 #include <sys/time.h>
-#include "wsserver.hpp"
-#include "mysql/mysqlfuuu.hpp"
-#include "redis/redisfuuu.hpp"
+#include "wsServer.hpp"
+#include "mysql/mysql.hpp"
+#include "redis/redis.hpp"
 #include "game.hpp"
 #include "timer.h"
 
+/**
+ * 消息相关解析或生成
+ */
 Msg_VType makepbv(const std::vector<int>& o) {
     Msg_VType v;
     for (int i : o)
@@ -116,6 +121,9 @@ bool getpbo(const Msg_VType& v, std::string& o) {
     return false;
 }
 
+/**
+ * 存读取数据库结果
+ */
 std::vector<std::vector<std::string>> tab;
 // // 显示查询结果
 // void pTable(const std::vector<std::vector<std::string>>& tab) {
@@ -170,6 +178,7 @@ int new_user(const std::string& un, const std::string& pw) {
 
 /**
  * 获得一个新的块
+ * 相对降低T型块概率
  */
 int new_drop() {
     int i = rand() % 32;
@@ -189,9 +198,15 @@ uint64_t get_ms() {
     return ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
 }
 
-// 给ws注册事件
+/**
+ * 使用ws.on给各消息绑定上处理函数
+ * 完成消息对应的操作
+ */
 void ws_on() {
 
+    /**
+     * 测试ms级时间获取
+     */
     // setInterval([]{
     //     std::cout << get_ms() << std::endl;
     // }, 5000);
@@ -265,7 +280,7 @@ void ws_on() {
             }
         }, 3000));
         if(sql.query("insert into elsfk_game_4 (g_level, u_id1, u_id2, u_id3, u_id4) values (0" + ustr + ")") && sql.query("select @@IDENTITY") && sql.result(tab)) {
-            room->record.id = tab[0][0];
+            room->record.id = tab[0][0];    // 使用自增获得的唯一的记录标识符  通过该标识符可以找到回放记录
         }
     };
 
@@ -289,19 +304,23 @@ void ws_on() {
         redis.setMapByField("hashGameRecords", room->record.id, room->record.getBuffer());
     };
 
-    // signup  注册
+    /**
+     * 注册
+     * 在一定的规则下随机生成不连续的uid
+     * uid是唯一的 用户名可以重复 uid才是登陆的凭证
+     */
     ws.on("signup", _WSONCB_{
         std::string uname, password;
         CITER iter;
         iter = data.find("uname");
         if (iter == data.cend())
             return;
-        if (!getpbo(iter->second, uname) || uname.length() == 0 || uname.length() > 24) 
+        if (!getpbo(iter->second, uname) || uname.length() == 0 || uname.length() > 24)     // 昵称长度检查
             return;        
         iter = data.find("password");
         if (iter == data.cend())
             return;
-        if (!getpbo(iter->second, password) || password.length() != 32)
+        if (!getpbo(iter->second, password) || password.length() != 32)     // 加密后密码长度为32  发过来加密后的密码
             return;
         Msg msg_back;
         auto data_back = msg_back.mutable_data();
@@ -322,7 +341,12 @@ void ws_on() {
         ws.send(hdl, buff_back);
     });
 
-    // signin  登陆
+    /**
+     * 登陆
+     * 已为登陆状态将向旧的hdl发送被挤下线
+     * 正在进行游戏的玩家将恢复至游戏状态
+     * 正在进行匹配的玩家将退出匹配状态
+     */
     ws.on("signin", _WSONCB_{
         int uid;
         std::string password;
@@ -387,8 +411,8 @@ void ws_on() {
 
     /**
      * 重连
-     * 暂时 重连只能重连成登陆状态  并不能恢复重连前的状态
-     * 后面使用room->record是可以实现恢复游戏状态的
+     * 通过uid和rid判别是否假冒重连消息
+     * 更新用户的hdl
      */
     ws.on("userrelink", _WSONCB_{
         // uid: int, rid: int
@@ -419,7 +443,7 @@ void ws_on() {
         msg_back.SerializeToString(&buff_back);
         ws.send(hdl, buff_back);
     });
-
+    // 登出
     ws.on("logout", _WSONCB_{
         if (!ws.removeHDL(hdl))
             return;
@@ -513,6 +537,7 @@ void ws_on() {
         for (int i = 0; i < 4; i++) 
             ws.send(room->uids[i], buff_back);
     });
+    // 特殊
     ws.on("droppingChanged", _WSONCB_{
         auto info = ws.getInfoByHdl(hdl);
         if (info == NULL)
@@ -646,6 +671,7 @@ void ws_on() {
 
     /**
      * 获取记录列表
+     * 将玩家参与的游戏记录返回给玩家
      */
     ws.on("recordList", _WSONCB_{
         auto info = ws.getInfoByHdl(hdl);
@@ -685,6 +711,7 @@ void ws_on() {
 
     /**
      * 获取某条记录
+     * 通过recordId找到记录 将记录返回给玩家
      */
     ws.on("recordGet", _WSONCB_{
         auto info = ws.getInfoByHdl(hdl);
@@ -709,6 +736,10 @@ void ws_on() {
         ws.send(hdl, buff_back);
     });
 
+    /**
+     * 记录玩家分数
+     * 只有大于1000的分值才配被记录
+     */
     ws.on("score", _WSONCB_{
         auto info = ws.getInfoByHdl(hdl);
         if (info == NULL)
@@ -718,15 +749,18 @@ void ws_on() {
         iter = data.find("score");
         if (iter == data.cend())
             return;
-        if (!getpbo(iter->second, score))
+        if (!getpbo(iter->second, score) && score < 1000)
             return;
-        char itoa[8];
+        char itoa[8];   // 按照4字节uid+4字节score的方式编码
         *(int*)itoa = uid;
         *(int*)(itoa+4) = score;
         string mix(itoa, 8);
         redis.appendString("strGameScores", mix);
     });
 
+    /**
+     * 获取高分排行
+     */
     ws.on("rank", _WSONCB_{
         Msg msg_back;
         msg_back.set_desc("rank");
