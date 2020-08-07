@@ -64,7 +64,8 @@ class GRecord{
             } else {
                 console.log("发生错误，在", this._buffer, this._ptr, "附近!");
             }
-        }, timeout / this._speed);
+            this._movePtr();
+        }, this._speed === 0 ? 0 : timeout / this._speed);
     }
     
     constructor (record?: Uint8Array) {
@@ -114,13 +115,14 @@ class GRecord{
     }
     play () {
         if (this._status == GRecord.Paused) {
+            this._status = GRecord.Playing;
             this._movePtr();
         } else if (this._status == GRecord.Ready) {
             this.restart();
         }
     }
     setSpeed (speed: number) {
-        if (speed > 0)
+        if (speed >= 0)
             this._speed = speed;
     }
     on (en:string, efbk:Function) {
